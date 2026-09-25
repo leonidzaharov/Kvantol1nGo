@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test";
 import {
   E2E_ADMIN,
   E2E_ADMIN_PIN,
+  E2E_COURSE,
   E2E_GROUP,
   E2E_HIDDEN_RESOURCE,
   E2E_PIN,
@@ -35,6 +36,10 @@ async function loginStudent(page: Page) {
   await page.getByRole("button", { name: E2E_STUDENT }).click();
   await page.locator("#profile-pin").fill(E2E_PIN);
   await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page).toHaveURL(/\/(learn|courses)/, { timeout: 30_000 });
+  if (new URL(page.url()).pathname === "/courses") {
+    await page.getByText(E2E_COURSE, { exact: true }).click();
+  }
   await expect(page).toHaveURL(/\/learn/, { timeout: 30_000 });
 }
 

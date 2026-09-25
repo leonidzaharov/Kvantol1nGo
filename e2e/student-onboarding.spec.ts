@@ -24,7 +24,7 @@ test("наставник видит учеников в таблице, а но�
   await expect(page.getByText("Ученик создан.", { exact: false })).toBeVisible();
 
   await page.getByRole("link", { name: "Открыть таблицу учеников" }).click();
-  await expect(page.getByRole("columnheader", { name: "Ник" })).toBeVisible();
+  await expect(page.getByRole("columnheader", { name: "Ник", exact: true })).toBeVisible();
   await expect(page.getByRole("row", { name: new RegExp(NEW_STUDENT) })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
