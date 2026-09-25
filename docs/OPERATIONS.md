@@ -190,7 +190,7 @@ npm.cmd run verify:restore -- --allow-personal-data
 - Vercel Analytics и Speed Insights дают агрегированные показатели;
 - Prisma помечает запросы дольше 500 мс префиксом `[db:slow]` в серверных
   логах Vercel; порог можно изменить серверной переменной `DB_SLOW_QUERY_MS`;
-- GitHub Actions и Gitea Actions проверяют каждый push в `main` и pull request:
+- GitHub Actions проверяет `main` и pull request, а Gitea Actions — `test` и pull request:
   окружение, lint, unit- и integration-тесты, TypeScript, production-сборку,
   восстановление синтетического бэкапа, accessibility-аудит и Playwright E2E
   на временных схемах PostgreSQL.

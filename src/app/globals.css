@@ -368,6 +368,12 @@ body {
 .creator-leaderboard-name { line-height: 1.3; }
 .creator-leaderboard-subtitle { color: #6b21a8; }
 
+/* Green action buttons use dark text on the bright theme and white text on
+   the deeper staging green. Solid hover colours preserve text contrast. */
+.kvanto-secondary { color: #102315; }
+html[data-deployment="staging"] .kvanto-secondary { color: #ffffff; }
+html[data-theme="dark"] .kvanto-secondary { color: #102315; }
+
 /* Dark surfaces must change together with the foreground, including badges
    reused in the profile, leaderboard and achievement notifications. */
 html[data-theme="dark"] .achievement-rarity { --achievement-surface: #1d293b; --achievement-border: #72849c; --achievement-accent: #e2e8f0; --achievement-glow: transparent; }
