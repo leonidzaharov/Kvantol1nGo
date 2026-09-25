@@ -8,13 +8,28 @@ import { CREATOR_ACHIEVEMENT, CREATOR_LEADERBOARD_ENTRY, CREATOR_REGALIA } from 
 import styles from "./creator-profile.module.css";
 
 // A deterministic dot matrix keeps the server and browser render identical.
-const DOTS = Array.from({ length: 21 * 21 }, (_, index) => {
+const HEART_CELLS = Array.from({ length: 21 * 21 }, (_, index) => {
   const column = index % 21;
   const row = Math.floor(index / 21);
   const x = (column - 10) / 8;
   const y = (10 - row) / 8;
   return { column, row, inside: (x * x + y * y - 1) ** 3 - x * x * y ** 3 <= 0 };
 }).filter((dot) => dot.inside);
+const HEART_CELL_KEYS = new Set(HEART_CELLS.map(({ column, row }) => `${column}-${row}`));
+const DOTS = HEART_CELLS.map(({ column, row }) => {
+  let depth = 0;
+  for (let radius = 1; radius <= 3; radius += 1) {
+    const neighbors = [-radius, 0, radius];
+    if (neighbors.some((dx) => neighbors.some((dy) => !HEART_CELL_KEYS.has(`${column + dx}-${row + dy}`)))) break;
+    depth = radius;
+  }
+  return {
+    column,
+    row,
+    size: [4, 2.5, 1.3, 0.7][depth],
+    opacity: [0.84, 0.68, 0.54, 0.42][depth],
+  };
+});
 const COLORS = ["#ff626b", "#ffbb51", "#68ed9b", "#38ddd5", "#699fff", "#b394ff", "#ff87b5", "#c8f871"];
 
 export function CreatorProfileExperience() {
@@ -49,7 +64,6 @@ export function CreatorProfileExperience() {
       animations.push(
         animate(root.querySelectorAll("[data-heart-dot]"), {
           scale: [0.62, 1.12, 0.76, 1, 0.62],
-          opacity: [0.4, 1, 0.65, 0.9, 0.4],
           duration: 2400,
           delay: (_target: unknown, index = 0) => {
             const dot = DOTS[index];
@@ -120,8 +134,8 @@ export function CreatorProfileExperience() {
               </svg>
             </div>
             <div className={styles.heart}>
-              {DOTS.map(({ column, row }) => (
-                <span key={`${column}-${row}`} data-heart-dot className={styles.dot} style={{ left: `${column * 5}%`, top: `${row * 5}%` }} />
+              {DOTS.map(({ column, row, size, opacity }) => (
+                <span key={`${column}-${row}`} data-heart-dot className={styles.dot} style={{ left: `${column * 5}%`, top: `${row * 5}%`, width: `${size}%`, opacity }} />
               ))}
             </div>
             <span className={styles.heartCaption}>ЛЮБОПЫТСТВО. КОД. ЛЮБОВЬ.</span>

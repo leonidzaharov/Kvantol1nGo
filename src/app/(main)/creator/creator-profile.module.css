@@ -26,7 +26,7 @@
 .ticks { position: absolute; inset: 8.5%; border-radius: 50%; background: repeating-conic-gradient(from 0deg, #bf746c99 0deg 0.5deg, transparent .5deg 2deg); mask-image: radial-gradient(transparent 66%, black 66.5%, black 69%, transparent 69.5%); }
 .innerRim { position: absolute; inset: 13%; border-radius: 50%; border: 1px solid #111313; box-shadow: 0 0 0 5px #242626, 0 0 0 6px #161818; background: radial-gradient(ellipse at 50% 45%, #2b2425, #202222 70%); }
 .heart { position: absolute; inset: 25% 27% 29%; }
-.dot { position: absolute; width: 3.2%; aspect-ratio: 1; border-radius: 50%; background: #ff727a; opacity: .8; box-shadow: 0 0 7px #ff626b25; }
+.dot { position: absolute; translate: -50% -50%; aspect-ratio: 1; border-radius: 50%; background: #ff727a; box-shadow: 0 0 7px #ff626b25; }
 .heartCaption { position: absolute; bottom: 22%; left: 0; width: 100%; text-align: center; font-family: monospace; color: #969b93; font-size: clamp(5px, .65vw, 8px); letter-spacing: .14em; }
 .visualFooter { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 5px; }
 .signal { display: flex; align-items: center; gap: 7px; color: #c6c9bf; font-size: 12px; }
@@ -50,6 +50,41 @@
 .regalia { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .regalia span { color: #a2a99d; font-size: 11px; }
 .learn { flex-shrink: 0; color: #c8f871; font-size: 12px; }
+
+/* The light theme keeps the instrument readable against the rest of the light UI. */
+:global(html:not([data-theme="dark"])) .profile { color: #202923; background: #f3f5f0; border-color: #d5ddd4; box-shadow: 0 24px 60px #23452912; }
+:global(html:not([data-theme="dark"])) .topbar { border-color: #d9e0d8; }
+:global(html:not([data-theme="dark"])) .back,
+:global(html:not([data-theme="dark"])) .edition,
+:global(html:not([data-theme="dark"])) .signature,
+:global(html:not([data-theme="dark"])) .signal { color: #4f6056; }
+:global(html:not([data-theme="dark"])) .back:hover,
+:global(html:not([data-theme="dark"])) .learn,
+:global(html:not([data-theme="dark"])) .serial,
+:global(html:not([data-theme="dark"])) .eyebrow,
+:global(html:not([data-theme="dark"])) .period,
+:global(html:not([data-theme="dark"])) .cardLabel span { color: #276f42; }
+:global(html:not([data-theme="dark"])) .eyebrow > span,
+:global(html:not([data-theme="dark"])) .signal i,
+:global(html:not([data-theme="dark"])) .signatureLine { background: #368854; }
+:global(html:not([data-theme="dark"])) .identity h1 > span { color: #607065; }
+:global(html:not([data-theme="dark"])) .description,
+:global(html:not([data-theme="dark"])) .heartCaption,
+:global(html:not([data-theme="dark"])) .cardLabel,
+:global(html:not([data-theme="dark"])) .achievement h2 + p,
+:global(html:not([data-theme="dark"])) .cardNumber,
+:global(html:not([data-theme="dark"])) .regalia span { color: #53665a; }
+:global(html:not([data-theme="dark"])) .outerRim { border-color: #a9b8aa; box-shadow: inset 0 0 0 5px #e4eae3, inset 0 0 0 6px #b3bfb4, 0 0 0 1px #cbd6ca; }
+:global(html:not([data-theme="dark"])) .innerRim { border-color: #bdc9bd; box-shadow: 0 0 0 5px #e8ede6, 0 0 0 6px #b9c6b8; background: radial-gradient(ellipse at 50% 45%, #ffffff, #edf2eb 70%); }
+:global(html:not([data-theme="dark"])) .ticks { background: repeating-conic-gradient(from 0deg, #a35d61a6 0deg 0.5deg, transparent .5deg 2deg); }
+:global(html:not([data-theme="dark"])) .orbit { filter: drop-shadow(0 0 3px #516e5070) saturate(.8) brightness(.8); }
+:global(html:not([data-theme="dark"])) .innerOrbit circle { stroke: #a95d66; }
+:global(html:not([data-theme="dark"])) .dot { background: #bd4153; box-shadow: 0 0 5px #bd41532e; }
+:global(html:not([data-theme="dark"])) .motionButton { color: #344c3b; background: #ffffffa8; border-color: #c8d4c8; }
+:global(html:not([data-theme="dark"])) .motionButton:hover { background: #ffffff; }
+:global(html:not([data-theme="dark"])) .motionButton:disabled { color: #667769; }
+:global(html:not([data-theme="dark"])) .achievement { background: #e9eee7; border-color: #ced9cc; }
+:global(html:not([data-theme="dark"])) .medal { color: #276f42; background: #dff1d9; border-color: #a9c7a8; }
 @media (max-width: 1199px) {
   .profile { padding: 22px; }
   .hero { grid-template-columns: 1fr; gap: 6px; padding: 32px 0 24px; }
