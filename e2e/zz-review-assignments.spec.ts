@@ -34,6 +34,12 @@ async function loginStudent(page: Page) {
   await expect(page).toHaveURL(/\/learn/, { timeout: 30_000 });
 }
 
+async function openSubmission(page: Page, assignmentId: number) {
+  const href = await page.getByRole("link", { name: "Проверить" }).getAttribute("href");
+  expect(href).toMatch(new RegExp(`^/admin/review-assignments/${assignmentId}/review/\\d+$`));
+  await page.goto(href!);
+}
+
 test("черновик → публикация → возврат → повторная отправка → принятие без наград", async ({
   browser,
 }) => {
@@ -91,7 +97,7 @@ test("черновик → публикация → возврат → повт�
   );
 
   await adminPage.goto(`/admin/review-assignments/${assignmentId}`);
-  await adminPage.getByRole("link", { name: "Проверить" }).click();
+  await openSubmission(adminPage, assignmentId);
   await expect(adminPage.getByLabel("Код ученика, версия 1")).toContainText(
     "answer = 40",
   );
@@ -120,7 +126,7 @@ test("черновик → публикация → возврат → повт�
   );
 
   await adminPage.goto(`/admin/review-assignments/${assignmentId}`);
-  await adminPage.getByRole("link", { name: "Проверить" }).click();
+  await openSubmission(adminPage, assignmentId);
   await expect(adminPage.getByLabel("Код ученика, версия 2")).toContainText(
     "answer = 42",
   );

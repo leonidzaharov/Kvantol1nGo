@@ -43,7 +43,7 @@ test("наставник видит учеников в таблице, а но�
   // HTML validation is useful, but the server must reject a forged unchecked form too.
   await studentPage.locator('input[name="privacyAccepted"]').evaluate((input) => input.removeAttribute("required"));
   await studentPage.getByRole("button", { name: "Сохранить профиль" }).click();
-  await expect(studentPage.getByRole("alert")).toContainText("политикой конфиденциальности");
+  await expect(studentPage.getByRole("alert").filter({ hasText: "политикой конфиденциальности" })).toBeVisible();
   await studentPage.locator('input[name="privacyAccepted"]').check();
   await studentPage.getByRole("button", { name: "Сохранить профиль" }).click();
   await expect(studentPage).toHaveURL(/\/profile$/, { timeout: 30_000 });
