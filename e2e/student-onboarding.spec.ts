@@ -15,10 +15,11 @@ test("наставник видит учеников в таблице, а но�
   await page.goto("/admin/groups");
   await expect(page.getByRole("link", { name: "Создать ученика" })).toBeVisible();
   await page.getByRole("link", { name: "Создать ученика" }).click();
+  await expect(page.getByRole("link", { name: "Создать ученика" })).toHaveAttribute("aria-current", "page");
   await page.getByLabel("Пометка без ФИО").fill(NEW_STUDENT);
   await page.getByLabel("Временный ник").fill(NEW_STUDENT);
   await page.getByLabel("PIN").fill(NEW_PIN);
-  await page.getByLabel("Группа").selectOption({ label: E2E_GROUP });
+  await page.getByRole("combobox", { name: "Группа", exact: true }).selectOption({ label: E2E_GROUP });
   await page.getByRole("button", { name: "Создать ученика" }).click();
   await expect(page.getByText("Ученик создан.", { exact: false })).toBeVisible();
 
