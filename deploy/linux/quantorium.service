@@ -1,0 +1,23 @@
+[Unit]
+Description=Quantorium learning platform
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=quantorium
+Group=quantorium
+WorkingDirectory=/opt/quantorium/current
+EnvironmentFile=/etc/quantorium.env
+ExecStart=/usr/bin/node /opt/quantorium/current/node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3100
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/quantorium/uploads /opt/quantorium/releases
+
+[Install]
+WantedBy=multi-user.target

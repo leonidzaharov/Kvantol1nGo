@@ -1,0 +1,10 @@
+[Unit]
+Description=Update Quantorium from GitHub production branch
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/quantorium.env
+ExecStart=/usr/bin/node /usr/local/lib/quantorium-deploy.mjs
+UMask=0077

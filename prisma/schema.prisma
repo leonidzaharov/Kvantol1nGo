@@ -1,0 +1,560 @@
+// ============================================================
+// Prisma Schema — Геймифицированная платформа «Кванториум»
+// БД: PostgreSQL (Supabase в проде, локально — pg в Docker).
+// Подключение настраивается через DATABASE_URL/DIRECT_URL,
+// см. prisma.config.ts и src/lib/db.ts.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// ДОМЕН 1: Пользователи и учебный контент
+// ============================================================
+
+/// Направление обучения — первый шаг выбора на экране входа.
+enum GroupTrack {
+  intro // вводный
+  advanced // углублённый
+  project // проектный
+}
+
+/// Учебная группа (например «it-01»). Экран входа: направление → группа
+/// → ученик. Управляется наставником в /admin/groups.
+model Group {
+  id    Int        @id @default(autoincrement())
+  name  String     @unique
+  track GroupTrack
+
+  students           User[]
+  categoryAccess     CategoryGroupAssignment[]
+  lessonRestrictions LessonGroupAssignment[]
+  resourceAccess     ResourceGroupAssignment[]
+  classSessions      ClassSession[]
+  reviewAssignments  ReviewAssignmentGroup[]
+}
+
+/// Профиль ученика. Аутентификация через 4-значный PIN-код.
+/// isAdmin = наставник: видит админку (/admin) и правит контент.
+model User {
+  id                    String    @id @default(uuid())
+  /// Публичный ник. Его видят другие ученики в приложении.
+  name                  String
+  /// Приватная подпись для наставника (например, «Миша К.» или «Аня, место 4»).
+  mentorLabel           String?
+  /// null означает, что ученик ещё не подтвердил приватную подпись и публичный ник.
+  profileConfiguredAt   DateTime?
+  avatarId              String    @default("fox")
+  pinHash               String
+  /// Устаревшее поле переходного деплоя. Новые записи его не используют;
+  /// удалить отдельной миграцией после выхода версии без проверки уникальности.
+  pinFingerprint        String?
+  isAdmin               Boolean   @default(false)
+  groupId               Int? // null = «без группы» (новенькие и наставники)
+  totalXp               Int       @default(0)
+  level                 Int       @default(1)
+  currency              Int       @default(0)
+  pixelsRedeemed        Int       @default(0)
+  pixelRedemptions      PixelRedemption[] @relation("PixelStudent")
+  recordedRedemptions   PixelRedemption[] @relation("PixelMentor")
+  lastActiveDate        DateTime? // последний вход/активность — «кто давно не появлялся»
+  createdAt             DateTime  @default(now())
+  /// Ачивка-«витрина»: ученик выбирает одну из открытых, она показывается
+  /// в профиле и рядом с именем в лидерборде. SetNull — удаление ачивки
+  /// наставником просто очищает витрину, не трогая пользователя.
+  showcaseAchievementId Int?
+
+  // Связи
+  group               Group?                    @relation(fields: [groupId], references: [id])
+  showcaseAchievement Achievement?              @relation("Showcase", fields: [showcaseAchievementId], references: [id], onDelete: SetNull)
+  achievements        UserAchievement[]
+  lessonProgress      UserLessonProgress[]
+  studiedResources    UserResource[]
+  classroomProgress   SessionStudentProgress[]
+  classroomQuestions  SessionQuestionProgress[]
+  reviewTargets       ReviewAssignmentUser[]
+  reviewSubmissions   ReviewSubmission[]
+  adminAuditLogs      AdminAuditLog[]           @relation("AdminAuditActor")
+}
+
+/// Only important mentor actions are stored here. Lesson contents, student
+/// submissions, comments and PIN values must never be copied into this table.
+enum AdminAuditAction {
+  created
+  updated
+  deleted
+  published
+  unpublished
+  archived
+  audience_updated
+  pin_reset
+  awarded
+  accepted
+  returned
+  session_started
+  session_ended
+}
+
+enum AdminAuditEntity {
+  student
+  group
+  course
+  lesson
+  resource
+  review_assignment
+  review_submission
+  achievement
+  class_session
+}
+
+model AdminAuditLog {
+  id          Int              @id @default(autoincrement())
+  actorId     String?
+  action      AdminAuditAction
+  entityType  AdminAuditEntity
+  entityId    String?
+  /// A safe short label only: an entity title or a public nickname.
+  entityLabel String?
+  createdAt   DateTime         @default(now())
+
+  actor User? @relation("AdminAuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([actorId, createdAt])
+}
+
+/// Категория уроков — модуль программы (например: «Scratch», «Python»).
+/// track привязывает модуль к направлению: ученик видит только модули
+/// направления своей группы (наставник — все). Существующие категории
+/// HTML/JS/Scratch — вводные, поэтому default(intro).
+model Category {
+  id           Int                       @id @default(autoincrement())
+  name         String
+  icon         String?
+  track        GroupTrack                @default(intro)
+  isPublished  Boolean                   @default(false)
+  lessons      Lesson[]
+  achievements Achievement[]
+  groupAccess  CategoryGroupAssignment[]
+}
+
+/// Отдельный урок с вопросами/заданиями в формате JSON
+model Lesson {
+  id          Int     @id @default(autoincrement())
+  categoryId  Int
+  title       String
+  content     String // JSON-строка с вопросами и заданиями
+  xpReward    Int     @default(10)
+  coinReward  Int     @default(20) // монет за первое ПОЛНОЕ прохождение (тратятся офлайн у наставника)
+  sortOrder   Int     @default(0)
+  isPublished Boolean @default(false)
+
+  category          Category                @relation(fields: [categoryId], references: [id])
+  progress          UserLessonProgress[]
+  groupRestrictions LessonGroupAssignment[]
+  classSessions     ClassSession[]
+}
+
+/// Явное назначение курса группе. Пустой список означает, что курс не назначен никому.
+model CategoryGroupAssignment {
+  categoryId Int
+  groupId    Int
+
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, groupId])
+  @@index([groupId])
+}
+
+/// Необязательное сужение аудитории урока. Пустой список = все группы курса.
+model LessonGroupAssignment {
+  lessonId Int
+  groupId  Int
+
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  group  Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([lessonId, groupId])
+  @@index([groupId])
+}
+
+/// Прогресс ученика по уроку. answeredCount/totalQuestions даёт реальный %
+/// для прогресс-бара на дашборде. isCompleted фиксируется один раз и
+/// блокирует повторное начисление XP за тот же урок.
+model UserLessonProgress {
+  userId         String
+  lessonId       Int
+  answeredCount  Int       @default(0)
+  wrongAttempts  Int       @default(0)
+  totalQuestions Int       @default(0)
+  isCompleted    Boolean   @default(false)
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+  updatedAt      DateTime  @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id])
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@id([userId, lessonId])
+}
+
+// ============================================================
+// ДОМЕН 2: Очные занятия и живая аналитика
+// ============================================================
+
+/// Фаза, которую наставник видит на дашборде текущего занятия.
+enum ClassSessionPhase {
+  theory
+  tasks
+  bonus
+  completed
+}
+
+/// Основное или дополнительное задание со звёздочкой.
+enum LessonTaskSection {
+  core
+  bonus
+}
+
+/// Одно очное занятие конкретной группы по конкретному уроку.
+/// До нажатия наставником «Начать занятие» activatedAt = null: такая скрытая
+/// сессия буферизует ранние шаги учеников, но не показывается в админке.
+/// Исторический прогресс ученика хранится отдельно в UserLessonProgress.
+model ClassSession {
+  id          Int       @id @default(autoincrement())
+  groupId     Int
+  lessonId    Int
+  startedAt   DateTime  @default(now())
+  activatedAt DateTime?
+  endedAt     DateTime?
+
+  group     Group                     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  lesson    Lesson                    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  students  SessionStudentProgress[]
+  questions SessionQuestionProgress[]
+
+  @@index([groupId, endedAt])
+  @@index([groupId, lessonId, endedAt])
+  @@index([groupId, activatedAt, endedAt])
+}
+
+/// Текущее положение ученика внутри активного очного занятия.
+model SessionStudentProgress {
+  sessionId            Int
+  userId               String
+  phase                ClassSessionPhase @default(theory)
+  currentQuestionIndex Int               @default(0)
+  answeredCount        Int               @default(0)
+  totalQuestions       Int               @default(0)
+  bonusAnsweredCount   Int               @default(0)
+  bonusTotalQuestions  Int               @default(0)
+  wrongAttempts        Int               @default(0)
+  lastActivityAt       DateTime          @default(now())
+  completedAt          DateTime?
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId])
+  @@index([userId, lastActivityAt])
+}
+
+/// Счётчики по каждой задаче текущего занятия. Они позволяют показать,
+/// на какой задаче застряли дети, не сохраняя их ответы или исходный код.
+model SessionQuestionProgress {
+  sessionId     Int
+  userId        String
+  section       LessonTaskSection
+  questionIndex Int
+  wrongAttempts Int               @default(0)
+  isSolved      Boolean           @default(false)
+  updatedAt     DateTime          @updatedAt
+
+  session ClassSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([sessionId, userId, section, questionIndex])
+  @@index([sessionId, section, questionIndex])
+}
+
+// ============================================================
+// ДОМЕН 3: Ручные работы и обратная связь
+// ============================================================
+
+/// Жизненный цикл самой работы. Публикацией полностью управляет наставник.
+enum ReviewAssignmentStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// Одна работа принимает ровно один формат ответа.
+enum ReviewResponseType {
+  TEXT
+  LINK
+  CODE
+}
+
+/// Язык нужен только для CODE и определяет подсветку, но не запуск кода.
+enum ReviewCodeLanguage {
+  PYTHON
+  JAVASCRIPT
+  HTML
+  CSS
+  OTHER
+}
+
+/// NOT_SUBMITTED здесь намеренно нет: это отсутствие ReviewSubmission.
+enum ReviewSubmissionStatus {
+  SUBMITTED
+  REVISION_REQUESTED
+  ACCEPTED
+}
+
+/// Независимая ручная работа. У неё намеренно нет categoryId, lessonId,
+/// classSessionId, наград или связи с UserLessonProgress.
+model ReviewAssignment {
+  id           Int                    @id @default(autoincrement())
+  title        String
+  instructions String
+  responseType ReviewResponseType
+  codeLanguage ReviewCodeLanguage?
+  status       ReviewAssignmentStatus @default(DRAFT)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  publishedAt  DateTime?
+  archivedAt   DateTime?
+
+  groupTargets ReviewAssignmentGroup[]
+  userTargets  ReviewAssignmentUser[]
+  submissions  ReviewSubmission[]
+
+  @@index([status, createdAt])
+}
+
+/// Назначение ручной работы целой учебной группе.
+model ReviewAssignmentGroup {
+  assignmentId Int
+  groupId      Int
+
+  assignment ReviewAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  group      Group            @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([assignmentId, groupId])
+  @@index([groupId, assignmentId])
+}
+
+/// Точечное назначение ручной работы отдельному ученику.
+model ReviewAssignmentUser {
+  assignmentId Int
+  userId       String
+
+  assignment ReviewAssignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([assignmentId, userId])
+  @@index([userId, assignmentId])
+}
+
+/// Текущее состояние работы одного ученика. Пара работа + ученик уникальна.
+/// Полная история содержимого и решений хранится в ReviewSubmissionVersion.
+model ReviewSubmission {
+  id             Int                    @id @default(autoincrement())
+  assignmentId   Int
+  userId         String
+  status         ReviewSubmissionStatus @default(SUBMITTED)
+  currentVersion Int                    @default(1)
+  submittedAt    DateTime               @default(now())
+  reviewedAt     DateTime?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  assignment ReviewAssignment          @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  user       User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  versions   ReviewSubmissionVersion[]
+
+  @@unique([assignmentId, userId])
+  @@index([assignmentId, status])
+  @@index([userId, status])
+}
+
+/// Снимок одной отправки. При повторной сдаче создаётся новая строка;
+/// предыдущий ответ, комментарий и решение наставника не перезаписываются.
+model ReviewSubmissionVersion {
+  submissionId  Int
+  version       Int
+  content       String
+  status        ReviewSubmissionStatus @default(SUBMITTED)
+  mentorComment String?
+  submittedAt   DateTime               @default(now())
+  reviewedAt    DateTime?
+
+  submission ReviewSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@id([submissionId, version])
+  @@index([submissionId, submittedAt])
+}
+
+// ============================================================
+// ДОМЕН 4: Достижения
+// ============================================================
+
+/// Тип условия ачивки — какую метрику ученика сравниваем с целью.
+/// Движок (lib/achievements.ts) после каждого урока пересчитывает метрики
+/// и продвигает все активные ачивки подходящего типа.
+enum AchievementMetric {
+  lessons_completed // всего уроков пройдено (target = сколько нужно)
+  category_completed // пройдены ВСЕ уроки категории categoryId (target считается по живому числу уроков)
+  level_reached // достигнут уровень (target = номер уровня)
+  perfect_lessons // уроков пройдено без единой ошибки (target = сколько нужно)
+  manual_award // выдаётся наставником вручную и никогда не продвигается движком урока
+}
+
+enum AchievementRarity {
+  common
+  uncommon
+  rare
+  epic
+  legendary
+  mythic
+}
+
+/// Справочник достижений. Раньше жил в коде (REGISTRY в lib/achievements),
+/// теперь — данные: наставник создаёт/правит ачивки в /admin/achievements.
+/// `code` остался у восьми «встроенных» ачивок для связи с историей,
+/// у новых он NULL — код приложения на него больше не ссылается.
+model Achievement {
+  id             Int               @id @default(autoincrement())
+  code           String?           @unique
+  title          String
+  description    String
+  icon           String? // эмодзи для карточки и витрины
+  metric         AchievementMetric @default(lessons_completed)
+  rarity         AchievementRarity @default(common)
+  categoryId     Int? // только для metric = category_completed
+  targetValue    Int // цель; для category_completed игнорируется (target = число уроков категории)
+  rewardCurrency Int               @default(0)
+  isHidden       Boolean           @default(false) // секретная: до открытия видна как «???»
+  hiddenHint     String? // безопасная нейтральная подсказка без раскрытия условия
+  isActive       Boolean           @default(true) // выключенная не выдаётся и не показывается
+  sortOrder      Int               @default(0)
+
+  category    Category?         @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  users       UserAchievement[]
+  showcasedBy User[]            @relation("Showcase")
+}
+
+/// Связующая таблица «Пользователь ↔ Достижение» с прогрессом.
+/// Cascade: наставник удалил ачивку → прогресс по ней тоже уходит.
+model UserAchievement {
+  userId        String
+  achievementId Int
+  progress      Int       @default(0)
+  isUnlocked    Boolean   @default(false)
+  unlockedAt    DateTime?
+  notifiedAt    DateTime? // null = уведомление ещё нужно показать ученику
+
+  user        User        @relation(fields: [userId], references: [id])
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+}
+
+// ============================================================
+// ДОМЕН 5: Безопасность входа
+// ============================================================
+
+/// Журнал попыток логина для rate-limit'а 4-значного PIN.
+/// authorize() считает count неудачных за последние 15 минут — если ≥ 5,
+/// отказ независимо от верности PIN. Индекс по (userId, attemptedAt)
+/// держит COUNT(*) быстрым даже на десятках тысяч записей.
+/// FK на User НЕ ставим: попытки с несуществующим userId сюда не пишутся
+/// (см. src/auth.ts) — но если когда-то начнём логировать и enumeration,
+/// FK помешает каскадному удалению user'а.
+model LoginAttempt {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  succeeded   Boolean
+  attemptedAt DateTime @default(now())
+
+  @@index([userId, attemptedAt])
+}
+
+// ============================================================
+// ДОМЕН 6: Блок «Интересное» (внеурочные материалы)
+// ============================================================
+
+/// Тип материала — определяет, как карточка рендерится на /interesting.
+enum ResourceType {
+  scratch // встроенный проект Scratch (url = ID проекта из ссылки)
+  video // встроенное видео YouTube (url = ID видео после v=)
+  article // внешняя ссылка (url = полный https-адрес)
+  note // текстовый совет наставника (текст в body)
+}
+
+/// Материал блока «Интересное». Раньше был статичным списком в коде
+/// (src/app/(main)/interesting/resources.ts) — перенесён в БД, чтобы
+/// добавлять/править через будущую админку, а не правкой файлов.
+model Resource {
+  id          Int          @id @default(autoincrement())
+  type        ResourceType
+  title       String
+  description String? // короткое пояснение под заголовком
+  url         String? // смысл зависит от type (см. enum выше)
+  body        String? // текст для type = note
+  coinReward  Int          @default(2) // монет за «Изучил» (разово; обычно 1/2/3 по типу)
+  sortOrder   Int          @default(0) // порядок отображения (меньше — выше)
+  isPublished Boolean      @default(false)
+  createdAt   DateTime     @default(now())
+
+  studiedBy   UserResource[]
+  groupAccess ResourceGroupAssignment[]
+}
+
+/// Явное назначение карточки «Интересного» группе.
+/// Пустой список означает, что материал не назначен ни одной группе.
+model ResourceGroupAssignment {
+  resourceId Int
+  groupId    Int
+
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+  group    Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@id([resourceId, groupId])
+  @@index([groupId])
+}
+
+/// Отметка «ученик изучил материал». Уникальность пары гарантирует,
+/// что монеты за материал начисляются не больше одного раза.
+model UserResource {
+  userId     String
+  resourceId Int
+  studiedAt  DateTime @default(now())
+
+  user     User     @relation(fields: [userId], references: [id])
+  resource Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@id([userId, resourceId])
+}
+
+
+
+/// Manual external payout: immutable receipt and idempotency key in one record.
+model PixelRedemption {
+  id        String   @id @default(uuid())
+  userId    String
+  actorId   String?
+  pixels    Int
+  coins     Int
+  createdAt DateTime @default(now())
+  user      User     @relation("PixelStudent", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("PixelMentor", fields: [actorId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+}

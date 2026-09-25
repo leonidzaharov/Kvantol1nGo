@@ -1,0 +1,16 @@
+{
+  "title": "Переменные",
+  "xpReward": 40,
+  "questions": [
+    {
+      "prompt": "Какое ключевое слово объявляет неизменяемую переменную в JS?",
+      "options": ["var", "let", "const", "static"],
+      "correctIndex": 2
+    },
+    {
+      "prompt": "Что выведет console.log(typeof null)?",
+      "options": ["\"null\"", "\"object\"", "\"undefined\"", "\"number\""],
+      "correctIndex": 1
+    }
+  ]
+}

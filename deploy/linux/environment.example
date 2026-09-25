@@ -1,0 +1,13 @@
+# Copy outside the source tree to /etc/quantorium.env; chmod 600.
+# Replace placeholders. Do not include real secrets in source archives.
+NODE_ENV=production
+DATABASE_URL=postgresql://quantorium:URL_ENCODED_PASSWORD@127.0.0.1:5432/quantorium
+DIRECT_URL=postgresql://quantorium:URL_ENCODED_PASSWORD@127.0.0.1:5432/quantorium
+AUTH_SECRET=GENERATE_WITH_OPENSSL_RAND_BASE64_32
+AUTH_URL=https://quantorium.example.org
+APP_URL=https://quantorium.example.org
+AUTH_TRUST_HOST=true
+STORAGE_DRIVER=local
+UPLOADS_DIR=/var/lib/quantorium/uploads
+# No Supabase keys are required with STORAGE_DRIVER=local.
+# Do not set VERCEL, DATABASE_SCHEMA=e2e or KVANTOLINGO_E2E on Debian.

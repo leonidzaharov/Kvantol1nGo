@@ -1,0 +1,16 @@
+{
+  "title": "Первые теги",
+  "xpReward": 30,
+  "questions": [
+    {
+      "prompt": "Какой тег задаёт самый важный заголовок страницы?",
+      "options": ["<h6>", "<header>", "<h1>", "<title>"],
+      "correctIndex": 2
+    },
+    {
+      "prompt": "Какой тег создаёт абзац текста?",
+      "options": ["<text>", "<p>", "<para>", "<line>"],
+      "correctIndex": 1
+    }
+  ]
+}

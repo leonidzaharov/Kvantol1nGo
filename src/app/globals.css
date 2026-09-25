@@ -1,0 +1,400 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Основная яркая палитра Duolingo-стиля (Tailwind 4, CSS-first).
+   Production и обычный localhost используют стандартные оттенки Tailwind.
+   ============================================================ */
+@theme {
+  --font-sans: var(--font-nunito), system-ui, "Segoe UI", sans-serif;
+
+  --color-background: #ffffff;
+  --color-foreground: #3c3c3c;
+
+  /* Яркая основная палитра. Значения заданы явно, чтобы production и localhost
+     не могли унаследовать цвета из ранее собранной staging-темы. */
+  --color-neutral-400: oklch(70.8% 0 0);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-green-600: oklch(62.7% 0.194 149.214);
+  --color-sky-400: oklch(74.6% 0.16 232.661);
+  --color-sky-500: oklch(68.5% 0.169 237.323);
+  --color-rose-500: oklch(64.5% 0.246 16.439);
+  --color-indigo-500: oklch(58.5% 0.233 277.117);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-orange-500: oklch(70.5% 0.213 47.604);
+
+  /* фокус-кольцо и текст на цветных кнопках */
+  --color-ring: #58cc02;
+  --color-primary-foreground: #ffffff;
+
+  /* фирменная палитра Duolingo (для точечного использования) */
+  --color-brand: #58cc02;
+  --color-brand-dark: #58a700;
+}
+
+:root {
+  --code-editor-background: #fafafa;
+  --code-editor-foreground: #262626;
+  --code-editor-border: #e5e5e5;
+  --code-editor-focus: #7dd3fc;
+  --code-editor-gutter-background: #f5f5f5;
+  --code-editor-muted: #737373;
+  --code-editor-active-line: #f0f9ff;
+  --code-editor-selection: #bae6fd;
+  --code-editor-caret: #0284c7;
+  --code-editor-keyword: #7c3aed;
+  --code-editor-atom: #1d4ed8;
+  --code-editor-literal: #047857;
+  --code-editor-string: #b91c1c;
+  --code-editor-special-string: #c2410c;
+  --code-editor-definition: #1d4ed8;
+  --code-editor-type: #0f766e;
+  --code-editor-property: #2563eb;
+  --code-editor-comment: #92400e;
+  --code-editor-invalid: #dc2626;
+}
+
+/* Vercel Preview со специальным staging-флагом сохраняет контрастную палитру.
+   Production и обычный localhost по умолчанию используют яркие цвета выше. */
+html[data-deployment="staging"] {
+  --color-neutral-400: #626262;
+  --color-green-500: #15803d;
+  --color-green-600: #15803d;
+  --color-sky-400: #0369a1;
+  --color-sky-500: #0369a1;
+  --color-rose-500: #be123c;
+  --color-indigo-500: #4338ca;
+  --color-amber-500: #b45309;
+  --color-orange-500: #c2410c;
+  --color-ring: #15803d;
+}
+
+/* Пользовательская тёмная тема. Фирменный зелёный остаётся ярким, а фон,
+   поверхности и пастельные статусы становятся тёмными и контрастными. */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --color-background: #0f172a;
+  --color-foreground: #f1f5f9;
+
+  --color-neutral-50: #182235;
+  --color-neutral-100: #1f2a3d;
+  --color-neutral-200: #334155;
+  --color-neutral-300: #475569;
+  --color-neutral-400: #94a3b8;
+  --color-neutral-500: #cbd5e1;
+  --color-neutral-600: #dbe4ef;
+  --color-neutral-700: #eef2f7;
+  --color-neutral-800: #f8fafc;
+
+  --color-slate-100: #243047;
+  --color-slate-200: #3b4a61;
+  --color-slate-500: #cbd5e1;
+
+  --color-green-50: #14251b;
+  --color-green-100: #1a3522;
+  --color-green-200: #2f5b38;
+  --color-green-300: #4e9d59;
+  --color-green-400: #58cc02;
+  --color-green-500: #58cc02;
+  --color-green-600: #46a302;
+  --color-green-700: #86efac;
+  --color-green-800: #bbf7d0;
+
+  --color-sky-50: #10283a;
+  --color-sky-100: #15334a;
+  --color-sky-200: #1e4a68;
+  --color-sky-300: #38bdf8;
+  --color-sky-400: #38bdf8;
+  --color-sky-500: #0ea5e9;
+  --color-sky-600: #7dd3fc;
+  --color-sky-700: #bae6fd;
+  --color-sky-800: #e0f2fe;
+
+  --color-rose-50: #35151f;
+  --color-rose-100: #4b1827;
+  --color-rose-200: #70263a;
+  --color-rose-300: #fb7185;
+  --color-rose-400: #fb7185;
+  --color-rose-500: #fb7185;
+  --color-rose-600: #fda4af;
+  --color-rose-700: #fecdd3;
+
+  --color-amber-50: #2b2111;
+  --color-amber-100: #3b2d13;
+  --color-amber-200: #5a4317;
+  --color-amber-300: #8b651f;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fcd34d;
+  --color-amber-800: #fde68a;
+  --color-amber-900: #fef3c7;
+  --color-amber-950: #fffbeb;
+
+  --color-violet-50: #271b3d;
+  --color-violet-100: #382354;
+  --color-violet-200: #55357c;
+  --color-violet-300: #a78bfa;
+  --color-violet-500: #8b5cf6;
+  --color-violet-600: #8b5cf6;
+  --color-violet-700: #c4b5fd;
+  --color-violet-800: #ddd6fe;
+
+  --color-purple-50: #291a3b;
+  --color-purple-300: #c084fc;
+  --color-purple-400: #c084fc;
+  --color-purple-700: #d8b4fe;
+
+  --color-ring: #58cc02;
+  --color-brand: #58cc02;
+  --color-brand-dark: #46a302;
+
+  --code-editor-background: #162033;
+  --code-editor-foreground: #e2e8f0;
+  --code-editor-border: #475569;
+  --code-editor-focus: #38bdf8;
+  --code-editor-gutter-background: #0f172a;
+  --code-editor-muted: #94a3b8;
+  --code-editor-active-line: #1e293b;
+  --code-editor-selection: #164e63;
+  --code-editor-caret: #38bdf8;
+  --code-editor-keyword: #c4b5fd;
+  --code-editor-atom: #93c5fd;
+  --code-editor-literal: #86efac;
+  --code-editor-string: #fda4af;
+  --code-editor-special-string: #fdba74;
+  --code-editor-definition: #7dd3fc;
+  --code-editor-type: #5eead4;
+  --code-editor-property: #93c5fd;
+  --code-editor-comment: #fcd34d;
+  --code-editor-invalid: #fca5a5;
+}
+
+html[data-theme="dark"] .bg-white {
+  background-color: #162033;
+}
+
+html[data-theme="dark"] .bg-neutral-600 {
+  background-color: #475569;
+}
+
+html[data-theme="dark"] .bg-neutral-800 {
+  background-color: #020617;
+}
+
+html[data-theme="dark"] .text-neutral-100 {
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .text-black {
+  color: #f8fafc;
+}
+
+html[data-theme="dark"] .lesson-markdown-code-block code {
+  color: #f1f5f9;
+}
+
+html[data-theme="dark"] .hover\:bg-black\/5:hover {
+  background-color: rgb(255 255 255 / 0.06);
+}
+
+.theme-toggle__sun {
+  display: none;
+}
+
+html[data-theme="dark"] .theme-toggle__moon {
+  display: none;
+}
+
+html[data-theme="dark"] .theme-toggle__sun {
+  display: block;
+}
+
+html,
+body,
+:root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+/* ============================================================
+   Единый визуальный контракт достижений.
+   data-rarity задаёт палитру, data-state="locked" принудительно
+   отключает редкие эффекты у ещё не открытой секретной ачивки.
+   ============================================================ */
+.achievement-rarity {
+  --achievement-border: #d4d4d4;
+  --achievement-accent: #626262;
+  --achievement-surface: #ffffff;
+  --achievement-glow: transparent;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-color: var(--achievement-border);
+  background: var(--achievement-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--achievement-border) 20%, transparent);
+}
+
+.achievement-rarity > * {
+  position: relative;
+  z-index: 1;
+}
+
+.achievement-rarity[data-rarity="uncommon"] {
+  --achievement-border: #5fbd88;
+  --achievement-accent: #176b42;
+  --achievement-surface: #f3fbf6;
+}
+
+.achievement-rarity[data-rarity="rare"] {
+  --achievement-border: #60a5fa;
+  --achievement-accent: #1d4ed8;
+  --achievement-surface: #f4f8ff;
+  --achievement-glow: rgb(59 130 246 / 22%);
+  box-shadow:
+    0 0 0 1px rgb(96 165 250 / 24%),
+    0 7px 22px var(--achievement-glow);
+}
+
+
+
+.achievement-rarity[data-rarity="epic"] {
+  --achievement-border: #a78bfa;
+  --achievement-accent: #7c3aed;
+  --achievement-surface: #faf7ff;
+  --achievement-glow: rgb(124 58 237 / 25%);
+  animation: none;
+}
+
+.achievement-rarity[data-rarity="legendary"] {
+  --achievement-border: #f59e0b;
+  --achievement-accent: #92400e;
+  --achievement-surface: #fffaf0;
+  --achievement-glow: rgb(245 158 11 / 25%);
+  box-shadow:
+    0 0 0 1px rgb(245 158 11 / 35%),
+    0 8px 26px var(--achievement-glow);
+}
+
+
+
+.achievement-rarity[data-rarity="mythic"] {
+  --achievement-border: #a855f7;
+  --achievement-accent: #7e22ce;
+  --achievement-surface: #fbf8ff;
+  --achievement-glow: rgb(168 85 247 / 26%);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--achievement-surface), var(--achievement-surface)) padding-box,
+    linear-gradient(120deg, #22d3ee, #8b5cf6, #ec4899, #f59e0b, #22d3ee)
+      border-box;
+  background-size:
+    100% 100%,
+    260% 260%;
+  box-shadow: 0 9px 30px var(--achievement-glow);
+  animation: none;
+}
+
+.achievement-rarity[data-state="locked"] {
+  --achievement-border: #d4d4d4;
+  --achievement-accent: #626262;
+  --achievement-surface: #fafafa;
+  --achievement-glow: transparent;
+  border-color: #d4d4d4;
+  background: #fafafa;
+  box-shadow: none;
+  animation: none;
+}
+
+.achievement-rarity[data-state="locked"]::before,
+.achievement-rarity[data-state="locked"]::after {
+  content: none;
+  animation: none;
+}
+
+.achievement-rarity-label {
+  color: var(--achievement-accent);
+  background: color-mix(in srgb, var(--achievement-border) 16%, var(--achievement-surface));
+}
+
+.achievement-rarity-accent {
+  color: var(--achievement-accent);
+}
+
+
+
+
+
+@media (prefers-reduced-motion: reduce) {
+  .achievement-card,
+  .achievement-card::before,
+  .achievement-card::after,
+  .achievement-rarity,
+  .achievement-rarity::before,
+  .achievement-rarity::after,
+  .achievement-toast,
+  .achievement-toast::before,
+  .achievement-toast::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+}
+
+
+.achievement-rarity > .achievement-motion-layer { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; border-radius: inherit; }
+.achievement-motion-shine { position: absolute; inset: 0 auto 0 0; width: 35%; background: linear-gradient(110deg, transparent, rgb(96 165 250 / 30%), transparent); opacity: 0; }
+[data-rarity="legendary"] .achievement-motion-shine { background: linear-gradient(110deg, transparent, rgb(251 191 36 / 35%), transparent); }
+[data-rarity="mythic"] .achievement-motion-shine { background: linear-gradient(110deg, transparent, rgb(192 132 252 / 32%), rgb(34 211 238 / 24%), transparent); }
+.achievement-motion-spark { position: absolute; width: 7px; height: 7px; border-radius: 1px; background: var(--achievement-border); opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .achievement-motion-layer { display: none; } }
+
+
+/* Collectible cards: stable text surfaces, motion stays behind the emblem. */
+.achievement-card { border-radius: 22px; padding: 22px; gap: 18px; border-width: 1px; border-top-width: 3px; }
+.achievement-card-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; }
+.achievement-emblem { position: relative; isolation: isolate; display: grid; place-items: center; width: 88px; height: 88px; border-radius: 26px; border: 1px solid var(--achievement-border); overflow: hidden; }
+.achievement-emblem > :not(.achievement-motion-layer) { position: relative; z-index: 1; }
+.achievement-title { overflow-wrap: anywhere; }
+.achievement-card .text-neutral-400 { color: #596579; }
+.achievement-card[data-state="available"] { box-shadow: none; }
+.achievement-card[data-state="available"] .achievement-emblem { border-style: dashed; }
+.achievement-emblem > .achievement-motion-layer { position: absolute; inset: 0; z-index: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
+.achievement-motion-orbit { position: absolute; inset: 8px; border: 2px solid transparent; border-top-color: var(--achievement-border); border-bottom-color: var(--achievement-border); border-radius: 50%; opacity: .65; }
+[data-rarity="mythic"] .achievement-motion-orbit { border-top-color: #22d3ee; border-bottom-color: #f472b6; }
+.achievement-emblem .achievement-motion-spark { width: 4px; height: 4px; }
+.creator-leaderboard-name { line-height: 1.3; }
+.creator-leaderboard-subtitle { color: #6b21a8; }
+
+/* Dark surfaces must change together with the foreground, including badges
+   reused in the profile, leaderboard and achievement notifications. */
+html[data-theme="dark"] .achievement-rarity { --achievement-surface: #1d293b; --achievement-border: #72849c; --achievement-accent: #e2e8f0; --achievement-glow: transparent; }
+html[data-theme="dark"] .achievement-rarity[data-rarity="uncommon"] { --achievement-surface: #152e27; --achievement-border: #4ade80; --achievement-accent: #86efac; }
+html[data-theme="dark"] .achievement-rarity[data-rarity="rare"] { --achievement-surface: #162b47; --achievement-border: #60a5fa; --achievement-accent: #93c5fd; --achievement-glow: #60a5fa12; }
+html[data-theme="dark"] .achievement-rarity[data-rarity="epic"] { --achievement-surface: #2a2144; --achievement-border: #a78bfa; --achievement-accent: #c4b5fd; }
+html[data-theme="dark"] .achievement-rarity[data-rarity="legendary"] { --achievement-surface: #302718; --achievement-border: #fbbf24; --achievement-accent: #fde68a; --achievement-glow: #fbbf2412; }
+html[data-theme="dark"] .achievement-rarity[data-rarity="mythic"] { --achievement-surface: #292039; --achievement-border: #c084fc; --achievement-accent: #e9d5ff; --achievement-glow: #c084fc18; }
+html[data-theme="dark"] .achievement-rarity[data-state="locked"] { --achievement-surface: #1d293b; --achievement-border: #61738b; --achievement-accent: #cbd5e1; background: var(--achievement-surface); border-color: var(--achievement-border); }
+html[data-theme="dark"] .achievement-card .text-neutral-400 { color: #b9c6d9; }
+html[data-theme="dark"] .creator-leaderboard-name { color: #faf5ff; }
+html[data-theme="dark"] .creator-leaderboard-subtitle { color: #d8b4fe; }
+html[data-theme="dark"] .text-violet-500,
+html[data-theme="dark"] .text-violet-600 { color: #c4b5fd; }
+html[data-theme="dark"] .text-green-600 { color: #86efac; }
+.achievement-card button { min-height: 44px; }
+.achievement-card .text-green-500 { color: #166534; }
+.achievement-card .bg-green-500 { background-color: #166534; }
+html[data-theme="dark"] .achievement-card .text-green-500 { color: #86efac; }
+html[data-theme="dark"] .bg-green-500.text-primary-foreground { color: #102315; }
+html[data-theme="dark"] .achievement-card .bg-green-500 { background-color: #86efac; }
+
+.achievement-card .text-neutral-500 { color: #596579; }
+.achievement-card .text-green-600 { color: #166534; }
+.achievement-card .text-orange-500 { color: #9a3412; }
+.achievement-card .text-amber-600 { color: #92400e; }
+html[data-theme="dark"] .achievement-card .text-neutral-500 { color: #cbd5e1; }
+html[data-theme="dark"] .achievement-card .text-orange-500 { color: #fdba74; }
+html[data-theme="dark"] .achievement-card .text-amber-600 { color: #fde68a; }
+html[data-theme="dark"] .bg-green-600.text-white { color: #071a0c; }

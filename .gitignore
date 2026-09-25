@@ -1,0 +1,75 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-e2e/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+/src/generated/prisma
+
+# Legacy SQLite snapshot — больше не используется (миграция на Supabase Postgres).
+# Файл остаётся на локальной машине для архива, но в репозиторий не кладём:
+# хеши PIN'ов лежат там, в публичной/полупубличной истории им не место.
+/dev.db
+
+.vercel
+
+# Референс-копия duolingo-clone и архив старого проекта
+duo/
+_archive_old_project/
+
+# Локальные настройки редактора (не коммитим)
+.claude/
+
+# Локальные материалы лекций, не часть приложения
+lectures/
+
+# Локальные бэкапы базы (npm run backup) — персональные данные учеников,
+# в репозиторий им нельзя.
+/backups/
+
+# Playwright (E2E)
+/test-results/
+/playwright-report/
+/e2e/.fixtures.json
+
+# Нелицензированные Rive-референсы: не часть продукта и не для публикации.
+/assets ux/
+/handoff-private/
+/deliverables/

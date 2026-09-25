@@ -1,0 +1,18 @@
+#!/bin/sh
+# Локальный pre-push хук «Кванториум» — быстрая подстраховка ПЕРЕД отправкой.
+# Гоняет линтер и проверку типов (это быстро). Полную сборку делает серверный
+# CI (.gitea/workflows/ci.yml) — здесь её не повторяем, чтобы push не тормозил.
+#
+# Подключается один раз командой:  git config core.hooksPath .githooks
+# Пропустить разово (например, срочный фикс):  git push --no-verify
+#
+# Любой провал прерывает push (set -e).
+set -e
+
+echo "→ pre-push: линтер (npm run lint)…"
+npm run lint
+
+echo "→ pre-push: проверка типов (tsc --noEmit)…"
+npx tsc --noEmit
+
+echo "✓ pre-push: проверки пройдены, отправляю."

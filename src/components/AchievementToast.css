@@ -1,0 +1,115 @@
+.achievement-toast-stack {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 9999;
+  display: flex;
+  width: min(400px, calc(100vw - 32px));
+  flex-direction: column;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.achievement-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-height: 112px;
+  padding: 16px 42px 16px 16px;
+  border: 2px solid var(--achievement-border);
+  border-bottom-width: 4px;
+  border-radius: 18px;
+  color: #404040;
+  animation: achievement-toast-enter 360ms ease-out both;
+}
+
+.achievement-toast-icon {
+  display: flex;
+  width: 50px;
+  height: 50px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  font-size: 26px;
+}
+
+.achievement-toast-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.achievement-toast-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.achievement-toast-title {
+  margin-top: 4px;
+  color: #262626;
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.achievement-toast-desc {
+  margin-top: 4px;
+  color: #737373;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.achievement-toast-reward {
+  display: inline-flex;
+  margin-top: 8px;
+  border-radius: 999px;
+  background: #fff7ed;
+  padding: 3px 9px;
+  color: #f97316;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.achievement-toast-dismiss {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  border: 0;
+  background: transparent;
+  padding: 4px 7px;
+  color: #a3a3a3;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.achievement-toast-dismiss:hover {
+  color: #525252;
+}
+
+.achievement-toast-dismiss:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--achievement-accent);
+  outline-offset: 2px;
+}
+
+@keyframes achievement-toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 640px) {
+  .achievement-toast-stack {
+    right: 16px;
+    bottom: 16px;
+  }
+}
