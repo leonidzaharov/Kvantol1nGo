@@ -35,8 +35,8 @@ jobs:
       AUTH_SECRET: ci-only-7b9c4f6d2a8e1c5f3b7d9a4e6c8f2b5d
       AUTH_URL: http://localhost:3100
       AUTH_TRUST_HOST: "true"
-      SUPABASE_URL: https://ci-placeholder.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: ci_placeholder_service_role_key_0123456789abcdefghijklmnopqrstuvwxyz
+      STORAGE_DRIVER: local
+      UPLOADS_DIR: /tmp/quantorium-ci-uploads
 
     steps:
       - name: Checkout
@@ -53,6 +53,9 @@ jobs:
 
       - name: Generate Prisma client
         run: npx prisma generate
+
+      - name: Prepare local image storage
+        run: mkdir -p "$UPLOADS_DIR"
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
