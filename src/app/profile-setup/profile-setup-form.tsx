@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 
 import {
@@ -11,9 +12,11 @@ import { Button } from "@/components/ui/button";
 export function ProfileSetupForm({
   nickname,
   mentorLabel,
+  requiresConsent,
 }: {
   nickname: string;
   mentorLabel: string;
+  requiresConsent: boolean;
 }) {
   const [state, action, pending] = useActionState<StudentFormState, FormData>(
     configureStudentProfile,
@@ -57,6 +60,18 @@ export function ProfileSetupForm({
           Ник увидят другие ученики в профиле, достижениях и лидерборде.
         </p>
       </div>
+
+      {requiresConsent && (
+        <label className="flex items-start gap-3 rounded-xl border-2 border-green-200 bg-green-50 p-4 text-sm text-neutral-700">
+          <input type="checkbox" name="privacyAccepted" value="yes" required className="mt-1 size-4 shrink-0 accent-green-600" />
+          <span>
+            Я ознакомился(-ась) и согласен(-на) с{" "}
+            <Link href="/privacy" target="_blank" rel="noopener noreferrer" className="font-bold text-green-700 underline">
+              политикой конфиденциальности
+            </Link>.
+          </span>
+        </label>
+      )}
 
       {state?.error ? (
         <p role="alert" className="text-sm font-bold text-rose-500">

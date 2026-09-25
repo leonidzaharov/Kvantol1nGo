@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -71,7 +72,11 @@ export function StudentCreateForm({ groups }: { groups: GroupOption[] }) {
           Не указывайте имя и фамилию. Ученик найдёт временный ник на экране входа, а после ввода PIN выберет собственный.
         </p>
         {state?.error ? <p role="alert" className="mb-3 text-sm font-bold text-rose-500">{state.error}</p> : null}
-        {state?.success ? <p role="status" className="mb-3 text-sm font-bold text-green-600">{state.success}</p> : null}
+        {state?.success ? (
+          <p role="status" className="mb-3 text-sm font-bold text-green-600">
+            {state.success} <Link href="/admin/groups?tab=students" className="underline">Открыть таблицу учеников</Link>
+          </p>
+        ) : null}
         <Button type="submit" variant="secondary" disabled={pending}>
           {pending ? "Создаём…" : "Создать ученика"}
         </Button>

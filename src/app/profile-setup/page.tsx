@@ -18,6 +18,7 @@ export default async function ProfileSetupPage() {
       mentorLabel: true,
       isAdmin: true,
       profileConfiguredAt: true,
+      privacyAcceptedAt: true,
     },
   });
   if (!user) redirect("/api/orphan-signout");
@@ -39,6 +40,7 @@ export default async function ProfileSetupPage() {
         <ProfileSetupForm
           nickname={user.name}
           mentorLabel={user.mentorLabel ?? user.name}
+          requiresConsent={!user.privacyAcceptedAt}
         />
 
         {user.profileConfiguredAt ? (

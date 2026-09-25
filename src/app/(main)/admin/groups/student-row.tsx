@@ -12,13 +12,13 @@ import {
 } from "@/lib/actions/student-profile";
 import { TRACK_LABELS } from "@/lib/groups";
 
-type GroupOption = {
+export type GroupOption = {
   id: number;
   name: string;
   track: GroupTrack;
 };
 
-type Props = {
+export type StudentRowProps = {
   student: {
     id: string; currency: number; pixelsRedeemed: number;
     pixelRedemptions: { id: string; pixels: number; coins: number; createdAt: Date }[];
@@ -30,15 +30,15 @@ type Props = {
   groups: GroupOption[]; requestId: string;
 };
 
-export function StudentRow({ student, groups, requestId }: Props) {
+export function StudentRow({ student, groups, requestId }: StudentRowProps) {
   const [state, action, pending] = useActionState<StudentFormState, FormData>(
     updateStudent,
     null,
   );
 
   return (
-    <li className="rounded-2xl border-2 border-neutral-200 p-4">
-      <form action={action} className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+    <div className="rounded-2xl border border-neutral-200 p-4">
+      <form action={action} className="grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="userId" value={student.id} />
         <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
           Пометка без ФИО
@@ -47,7 +47,7 @@ export function StudentRow({ student, groups, requestId }: Props) {
             defaultValue={student.mentorLabel ?? student.name}
             maxLength={40}
             required
-            className="min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
+            className="w-full min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
           />
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
@@ -57,7 +57,7 @@ export function StudentRow({ student, groups, requestId }: Props) {
             defaultValue={student.name}
             maxLength={24}
             required
-            className="min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
+            className="w-full min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
           />
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
@@ -65,7 +65,7 @@ export function StudentRow({ student, groups, requestId }: Props) {
           <select
             name="groupId"
             defaultValue={student.groupId ?? ""}
-            className="min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
+            className="w-full min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
           >
             <option value="">Без группы</option>
             {groups.map((group) => (
@@ -75,11 +75,13 @@ export function StudentRow({ student, groups, requestId }: Props) {
             ))}
           </select>
         </label>
-        <Button type="submit" variant="secondary" size="sm" disabled={pending}>
-          {pending ? "Сохраняем…" : "Сохранить"}
-        </Button>
+        <div className="flex items-end">
+          <Button type="submit" variant="secondary" size="sm" disabled={pending}>
+            {pending ? "Сохраняем…" : "Сохранить"}
+          </Button>
+        </div>
 
-        <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-neutral-500 lg:col-span-2">
+        <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
           Новый PIN (необязательно)
           <input
             name="pin"
@@ -89,15 +91,15 @@ export function StudentRow({ student, groups, requestId }: Props) {
             maxLength={4}
             autoComplete="new-password"
             placeholder="Оставьте пустым, чтобы не менять"
-            className="min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
+            className="w-full min-w-0 rounded-xl border-2 bg-neutral-50 px-3 py-2 text-base normal-case tracking-normal text-neutral-700 outline-none focus:border-green-400"
           />
         </label>
-        <div className="text-xs font-bold text-neutral-400 lg:col-span-2 lg:text-right">
+        <div className="flex items-end text-xs font-bold text-neutral-400 sm:justify-end">
           {student.profileConfiguredAt ? "Профиль настроен" : "Ждёт первого входа"}
         </div>
 
-        {state?.error ? <p role="alert" className="text-sm font-bold text-rose-500 lg:col-span-4">{state.error}</p> : null}
-        {state?.success ? <p role="status" className="text-sm font-bold text-green-600 lg:col-span-4">{state.success}</p> : null}
+        {state?.error ? <p role="alert" className="text-sm font-bold text-rose-500 sm:col-span-2">{state.error}</p> : null}
+        {state?.success ? <p role="status" className="text-sm font-bold text-green-600 sm:col-span-2">{state.success}</p> : null}
       </form>
       <PixelExchangeForm userId={student.id} requestId={requestId} coins={student.currency} redeemed={student.pixelsRedeemed} />
       {student.pixelRedemptions.length > 0 && <details className="mt-2 text-xs text-neutral-500"><summary className="cursor-pointer">Последние выдачи</summary><ul className="mt-2 space-y-1">{student.pixelRedemptions.map((receipt) => <li key={receipt.id}>{new Intl.DateTimeFormat("ru-RU", { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Moscow" }).format(receipt.createdAt)} · {receipt.pixels} пикс. / {receipt.coins} монет</li>)}</ul></details>}
@@ -119,6 +121,6 @@ export function StudentRow({ student, groups, requestId }: Props) {
           Удалить ученика
         </Button>
       </form>
-    </li>
+    </div>
   );
 }

@@ -50,6 +50,8 @@ model User {
   mentorLabel           String?
   /// null означает, что ученик ещё не подтвердил приватную подпись и публичный ник.
   profileConfiguredAt   DateTime?
+  /// Когда ученик подтвердил ознакомление с политикой при настройке профиля.
+  privacyAcceptedAt     DateTime?
   avatarId              String    @default("fox")
   pinHash               String
   /// Устаревшее поле переходного деплоя. Новые записи его не используют;

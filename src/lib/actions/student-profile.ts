@@ -38,9 +38,13 @@ export async function configureStudentProfile(
   const userId = await requireUser();
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { isAdmin: true, groupId: true },
+    select: { isAdmin: true, groupId: true, privacyAcceptedAt: true },
   });
   if (!user || user.isAdmin) return { error: "Профиль ученика не найден" };
+
+  if (!user.privacyAcceptedAt && formData.get("privacyAccepted") !== "yes") {
+    return { error: "Ознакомься с политикой конфиденциальности и подтверди согласие." };
+  }
 
   const nickname = StudentNicknameSchema.safeParse(formData.get("nickname"));
   if (!nickname.success) return { error: firstError(nickname.error) };
@@ -63,6 +67,7 @@ export async function configureStudentProfile(
       name: nickname.data,
       mentorLabel: mentorLabel.data,
       profileConfiguredAt: new Date(),
+      privacyAcceptedAt: user.privacyAcceptedAt ?? new Date(),
     },
   });
   revalidateStudentPages();

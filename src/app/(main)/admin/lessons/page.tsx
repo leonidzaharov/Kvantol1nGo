@@ -120,60 +120,64 @@ export default async function AdminLessonsPage({ searchParams }: PageProps) {
                       return (
                         <li
                           key={lesson.id}
-                          className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-neutral-200 p-4"
+                          className="rounded-2xl border-2 border-neutral-200 p-4"
                         >
-                          <span className="w-8 shrink-0 text-center font-bold text-neutral-400">
-                            {lesson.sortOrder}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate font-bold text-neutral-700">
-                              {lesson.title}
-                            </p>
-                            <p className="text-xs font-bold text-neutral-400">
-                              {hasTheory ? "теория · " : ""}
-                              {content.questions.length} задан.
-                              {content.bonusQuestions.length > 0
-                                ? ` · ⭐ ${content.bonusQuestions.length}`
-                                : ""}
-                            </p>
+                          <div className="flex min-w-0 items-start gap-3">
+                            <span className="w-8 shrink-0 text-center font-bold text-neutral-400">
+                              {lesson.sortOrder}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className="break-words font-bold text-neutral-700">
+                                {lesson.title}
+                              </p>
+                              <p className="text-xs font-bold text-neutral-400">
+                                {hasTheory ? "теория · " : ""}
+                                {content.questions.length} задан.
+                                {content.bonusQuestions.length > 0
+                                  ? ` · ⭐ ${content.bonusQuestions.length}`
+                                  : ""}
+                              </p>
+                            </div>
                           </div>
-                          <span
-                            className={`text-xs font-bold ${
-                              lesson.isPublished
-                                ? "text-green-600"
-                                : "text-amber-600"
-                            }`}
-                          >
-                            {lesson.isPublished ? "Опубликован" : "Черновик"}
-                            {lesson._count.groupRestrictions > 0
-                              ? ` · ${lesson._count.groupRestrictions} групп`
-                              : " · все группы"}
-                          </span>
-                          <Button variant="ghost" size="sm" asChild>
-                            <Link href={`/lesson/${lesson.id}/preview`}>
-                              Предпросмотр
-                            </Link>
-                          </Button>
-                          <PublicationControl
-                            id={lesson.id}
-                            isPublished={lesson.isPublished}
-                            action={toggleLessonPublication}
-                          />
-                          <form action={duplicateLesson}>
-                            <input type="hidden" name="id" value={lesson.id} />
-                            <Button type="submit" variant="ghost" size="sm">
-                              Дублировать
+                          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-neutral-200 pt-3">
+                            <span
+                              className={`mr-auto text-xs font-bold ${
+                                lesson.isPublished
+                                  ? "text-green-600"
+                                  : "text-amber-600"
+                              }`}
+                            >
+                              {lesson.isPublished ? "Опубликован" : "Черновик"}
+                              {lesson._count.groupRestrictions > 0
+                                ? ` · ${lesson._count.groupRestrictions} групп`
+                                : " · все группы"}
+                            </span>
+                            <Button variant="ghost" size="sm" asChild>
+                              <Link href={`/lesson/${lesson.id}/preview`}>
+                                Предпросмотр
+                              </Link>
                             </Button>
-                          </form>
-                          <Button variant="secondaryOutline" size="sm" asChild>
-                            <Link href={`/admin/lessons/${lesson.id}`}>
-                              Изменить
-                            </Link>
-                          </Button>
-                          <DeleteLessonButton
-                            id={lesson.id}
-                            title={lesson.title}
-                          />
+                            <PublicationControl
+                              id={lesson.id}
+                              isPublished={lesson.isPublished}
+                              action={toggleLessonPublication}
+                            />
+                            <form action={duplicateLesson}>
+                              <input type="hidden" name="id" value={lesson.id} />
+                              <Button type="submit" variant="ghost" size="sm">
+                                Дублировать
+                              </Button>
+                            </form>
+                            <Button variant="secondaryOutline" size="sm" asChild>
+                              <Link href={`/admin/lessons/${lesson.id}`}>
+                                Изменить
+                              </Link>
+                            </Button>
+                            <DeleteLessonButton
+                              id={lesson.id}
+                              title={lesson.title}
+                            />
+                          </div>
                         </li>
                       );
                     })}
