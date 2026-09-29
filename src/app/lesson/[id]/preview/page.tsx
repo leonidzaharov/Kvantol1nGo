@@ -15,7 +15,7 @@ type PageProps = {
 };
 
 export default async function LessonPreviewPage({ params }: PageProps) {
-  const adminId = await requireAdminOr404();
+  await requireAdminOr404();
   const { id } = await params;
   const lessonId = Number.parseInt(id, 10);
   if (!Number.isFinite(lessonId) || lessonId <= 0) notFound();
@@ -47,7 +47,7 @@ export default async function LessonPreviewPage({ params }: PageProps) {
           content={sanitizeLessonContent(parseLessonContent(lesson.content))}
           alreadyCompleted={false}
           previewMode
-          theoryProgressKey={`lesson-theory-preview:v1:${adminId}:${lesson.id}`}
+          draftUserId={null}
         />
       </div>
     </div>

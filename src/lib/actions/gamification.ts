@@ -6,6 +6,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { parseLessonContent } from "@/lib/lesson-content";
+import { splitTheoryIntoSections } from "@/lib/theory-sections";
 import {
   advanceAchievements,
   type UnlockedAchievement,
@@ -36,16 +37,12 @@ export type CompleteLessonResult = {
 
 export async function completeLesson(
   lessonId: number,
-  opts?: { perfect?: boolean },
 ): Promise<CompleteLessonResult> {
   const userId = await requireUser();
   lessonId = parse(IdSchema, lessonId);
   if (!(await canAccessLesson(userId, lessonId))) {
     throw new Error("FORBIDDEN");
   }
-  // Клиентский флаг «прошёл без единой ошибки» — как и весь ход урока,
-  // доверяем клиенту (школьный проект). Строгое === true отсекает мусор.
-  const perfect = opts?.perfect === true;
 
   const lesson = await prisma.lesson.findUnique({
     where: { id: lessonId },
@@ -58,11 +55,14 @@ export async function completeLesson(
   const now = new Date();
   const parsedContent = parseLessonContent(lesson.content);
   const totalQuestions = parsedContent.questions.length;
-  const { user, updated, rewards } = await prisma.$transaction(async (tx) => {
+  const { user, updated, rewards, perfect } = await prisma.$transaction(async (tx) => {
     // The same student lock is used by payouts: parallel completions cannot farm coins.
     await lockStudentBalance(tx, userId);
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
     const progress = await tx.userLessonProgress.findUnique({ where: { userId_lessonId: { userId, lessonId } } });
+    // «Перфект» считает сервер по записанным ошибкам — клиентский флаг
+    // больше не принимаем (нельзя подделать безупречное прохождение).
+    const perfect = totalQuestions > 0 && (progress?.wrongAttempts ?? 0) === 0;
     const rewards = computeLessonRewards(lesson, user, progress?.isCompleted ?? false, calculateLevel);
     await tx.userLessonProgress.upsert({
       where: { userId_lessonId: { userId, lessonId } },
@@ -70,7 +70,7 @@ export async function completeLesson(
       update: { answeredCount: totalQuestions, totalQuestions, isCompleted: true, ...(rewards.firstCompletion ? { completedAt: now } : {}) },
     });
     const updated = await tx.user.update({ where: { id: userId }, data: { totalXp: rewards.newTotalXp, level: rewards.newLevel, currency: { increment: rewards.gainedCoins }, lastActiveDate: now } });
-    return { user, updated, rewards };
+    return { user, updated, rewards, perfect };
   });
   const { firstCompletion, gainedXp, gainedCoins, leveledUp } = rewards;
   // Метрики считаем прямо после транзакции — счётчики уже учитывают только
@@ -300,4 +300,47 @@ export async function recordCorrectAnswer(lessonId: number): Promise<void> {
   });
 
   revalidatePath("/learn");
+}
+
+/**
+ * Сохраняет шаг теории незавершённого урока — по нему ученик возвращается
+ * на место остановки. step зажимается в границы реального контента, поэтому
+ * клиент может навредить только своей позиции (и то только откатом назад).
+ */
+export async function saveTheoryStep(
+  lessonId: number,
+  step: number,
+): Promise<void> {
+  const userId = await requireUser();
+  lessonId = parse(IdSchema, lessonId);
+  step = parse(z.number().int().min(0).max(200), step);
+  if (!(await canAccessLesson(userId, lessonId))) return;
+
+  const lesson = await prisma.lesson.findUnique({
+    where: { id: lessonId },
+    select: { content: true },
+  });
+  if (!lesson) return;
+
+  const parsed = parseLessonContent(lesson.content);
+  const theoryTotal = splitTheoryIntoSections(parsed.theory).length;
+  const clamped = Math.min(step, Math.max(0, theoryTotal));
+
+  const existing = await prisma.userLessonProgress.findUnique({
+    where: { userId_lessonId: { userId, lessonId } },
+    select: { isCompleted: true },
+  });
+  // Завершённый урок не переписываем — повтор всегда начинается с начала.
+  if (existing?.isCompleted) return;
+
+  await prisma.userLessonProgress.upsert({
+    where: { userId_lessonId: { userId, lessonId } },
+    create: {
+      userId,
+      lessonId,
+      theoryStep: clamped,
+      totalQuestions: parsed.questions.length,
+    },
+    update: { theoryStep: clamped },
+  });
 }

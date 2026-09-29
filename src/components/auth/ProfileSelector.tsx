@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import type { GroupTrack } from "@/generated/prisma";
+import { clearAllDrafts } from "@/lib/code-drafts";
 import { TRACK_LABELS, TRACK_ORDER } from "@/lib/groups";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -68,6 +69,13 @@ export function ProfileSelector({ groups, ungrouped }: Props) {
   useEffect(() => {
     if (selectedId) pinRef.current?.focus();
   }, [selectedId]);
+
+  // Общий компьютер: экран выбора профиля — это граница между сидевшим
+  // и пришедшим учеником. Стираем все черновики кода, чтобы второй ученик
+  // не увидел чужое решение (в уроке дополнительно чистятся чужие ключи).
+  useEffect(() => {
+    clearAllDrafts();
+  }, []);
 
   const goBack = () => {
     setError("");

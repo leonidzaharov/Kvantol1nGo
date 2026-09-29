@@ -196,6 +196,9 @@ model UserLessonProgress {
   answeredCount  Int       @default(0)
   wrongAttempts  Int       @default(0)
   totalQuestions Int       @default(0)
+  // Последний просмотренный шаг теории: по нему урок возвращает ученика
+  // на место остановки. theoryStep >= числа шагов означает «теория пройдена».
+  theoryStep     Int       @default(0)
   isCompleted    Boolean   @default(false)
   startedAt      DateTime  @default(now())
   completedAt    DateTime?

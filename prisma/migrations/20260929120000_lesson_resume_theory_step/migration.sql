@@ -1,0 +1,1 @@
+ALTER TABLE "UserLessonProgress" ADD COLUMN "theoryStep" INTEGER NOT NULL DEFAULT 0;

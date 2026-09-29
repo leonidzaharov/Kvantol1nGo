@@ -20,12 +20,21 @@ import {
   checkTextAnswer,
   completeLesson,
   recordCorrectAnswer,
+  saveTheoryStep,
   type CompleteLessonResult,
 } from "@/lib/actions/gamification";
 import {
   recordCodeAttempt,
   reportLessonPosition,
 } from "@/lib/actions/classroom";
+import {
+  clearLessonDrafts,
+  clearOtherUsersDrafts,
+  readDraft,
+  removeDraft,
+  writeDraft,
+} from "@/lib/code-drafts";
+import type { LessonResumeState } from "@/lib/lesson-resume";
 import { questionKind, type SafeLessonContent } from "@/lib/lesson-content";
 import { outputsMatch } from "@/lib/output-match";
 import { prewarmCode, runCode } from "@/lib/code-runner";
@@ -50,8 +59,10 @@ type Props = {
   /** Урок уже пройден раньше → это «тренировка», XP повторно не начислится. */
   alreadyCompleted: boolean;
   previewMode?: boolean;
-  /** Ключ включает пользователя, чтобы общий компьютер не смешивал шаги детей. */
-  theoryProgressKey: string;
+  /** Сохранённая в базе позиция незавершённого урока; без неё — с начала. */
+  resume?: LessonResumeState;
+  /** id пользователя для привязки черновиков кода (в предпросмотре — null). */
+  draftUserId: string | null;
 };
 
 function fireConfetti() {
@@ -75,7 +86,8 @@ export function QuestRunner({
   content,
   alreadyCompleted,
   previewMode = false,
-  theoryProgressKey,
+  resume,
+  draftUserId,
 }: Props) {
   const coreQuestions = content.questions;
   const bonusQuestions = content.bonusQuestions;
@@ -88,14 +100,27 @@ export function QuestRunner({
   const hasTheory = theoryTotal > 0;
 
   // Урок: теория → обязательные задачи → необязательные задачи со звёздочкой.
+  // Стартовая точка берётся из сохранённой позиции (resume), если ученик
+  // возвращается в незавершённый урок.
   const [phase, setPhase] = useState<"theory" | "tasks" | "bonus">(
-    hasTheory ? "theory" : "tasks",
+    previewMode || !resume
+      ? hasTheory
+        ? "theory"
+        : "tasks"
+      : resume.phase,
   );
   const questions = phase === "bonus" ? bonusQuestions : coreQuestions;
   const total = questions.length;
   const section = phase === "bonus" ? "bonus" : "core";
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [theoryIndex, setTheoryIndex] = useState(0);
+  const [activeIndex, setActiveIndex] = useState(
+    previewMode || !resume ? 0 : resume.questionIndex,
+  );
+  const [theoryIndex, setTheoryIndex] = useState(
+    previewMode || !resume ? 0 : resume.theoryIndex,
+  );
+  const [resumeHintVisible, setResumeHintVisible] = useState(
+    !previewMode && resume?.resumed === true,
+  );
   const theoryScrollRef = useRef<HTMLDivElement>(null);
   const [selectedOption, setSelectedOption] = useState<number | undefined>(
     undefined,
@@ -105,29 +130,24 @@ export function QuestRunner({
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   // Ответ проверяет сервер (checkAnswer) — на время запроса блокируем кнопку.
   const [checking, setChecking] = useState(false);
-  const [hearts, setHearts] = useState(MAX_HEARTS);
-  const [completedCount, setCompletedCount] = useState(0);
+  const [hearts, setHearts] = useState(
+    previewMode || !resume ? MAX_HEARTS : resume.hearts,
+  );
+  const [completedCount, setCompletedCount] = useState(
+    previewMode || !resume ? 0 : resume.questionIndex,
+  );
   const [result, setResult] = useState<CompleteLessonResult | null>(null);
   const [bonusFinished, setBonusFinished] = useState(false);
   const [toasts, setToasts] = useState<UnlockedAchievement[]>([]);
   const [isPending, startTransition] = useTransition();
 
+  // Подсказка «продолжаем с места остановки» сама гаснет через несколько
+  // секунд, а досрочно прячется первым действием ученика (см. onSelect и т.д.).
   useEffect(() => {
-    if (!hasTheory) return;
-    let saved = Number.NaN;
-    try {
-      saved = Number.parseInt(
-        window.sessionStorage.getItem(theoryProgressKey) ?? "",
-        10,
-      );
-    } catch {
-      return;
-    }
-    if (!Number.isInteger(saved) || saved < 0 || saved >= theoryTotal) return;
-    // Восстановление внешнего состояния вкладки после обновления страницы.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTheoryIndex(saved);
-  }, [hasTheory, theoryProgressKey, theoryTotal]);
+    if (!resumeHintVisible) return;
+    const timer = window.setTimeout(() => setResumeHintVisible(false), 6000);
+    return () => window.clearTimeout(timer);
+  }, [resumeHintVisible]);
 
   useEffect(() => {
     theoryScrollRef.current?.scrollTo({ top: 0 });
@@ -143,6 +163,21 @@ export function QuestRunner({
   const [codeFailsByIndex, setCodeFailsByIndex] = useState<
     Record<number, number>
   >({});
+
+  const challenge = questions[activeIndex];
+  const theorySection = theorySections[theoryIndex] ?? theorySections[0];
+  const kind = challenge ? questionKind(challenge) : "choice";
+  // Черновик кода подхватывается лениво: сначала правки этой сессии,
+  // потом сохранённый в браузере черновик, потом стартовый код задания.
+  const currentCode =
+    kind === "code" && challenge?.type === "code"
+      ? codeByIndex[activeIndex] ??
+          (draftUserId
+            ? readDraft(draftUserId, lessonId, section, activeIndex)
+            : null) ??
+          challenge.starterCode ??
+          ""
+      : "";
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -160,6 +195,25 @@ export function QuestRunner({
       if (q.type === "code") prewarmCode(q.language);
     }
   }, [coreQuestions, bonusQuestions]);
+
+  // Общий компьютер: черновики кода привязаны к профилю. Заходя в урок,
+  // стираем черновики всех других профилей — следующий ученик за этим же
+  // компьютером не увидит чужое решение.
+  useEffect(() => {
+    if (draftUserId) clearOtherUsersDrafts(draftUserId);
+  }, [draftUserId]);
+
+  // Автосохранение черновика с паузой: пишем, когда ученик остановился.
+  useEffect(() => {
+    if (!draftUserId || kind !== "code" || challenge?.type !== "code") return;
+    const code = codeByIndex[activeIndex];
+    if (code === undefined) return;
+    const timer = window.setTimeout(() => {
+      writeDraft(draftUserId, lessonId, section, activeIndex, code);
+    }, 600);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftUserId, codeByIndex, activeIndex, section]);
 
   // Наставник видит позицию максимум через несколько секунд. Heartbeat нужен,
   // чтобы отличать открытый урок от давно оставленной вкладки.
@@ -198,13 +252,6 @@ export function QuestRunner({
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
-  const challenge = questions[activeIndex];
-  const theorySection = theorySections[theoryIndex] ?? theorySections[0];
-  const kind = challenge ? questionKind(challenge) : "choice";
-  const currentCode =
-    kind === "code" && challenge?.type === "code"
-      ? codeByIndex[activeIndex] ?? challenge.starterCode ?? ""
-      : "";
   const coreLearningTotal = theoryTotal + coreTotal;
   const percentage =
     phase === "bonus"
@@ -223,6 +270,7 @@ export function QuestRunner({
 
   const onSelect = (index: number) => {
     if (status !== "none") return;
+    setResumeHintVisible(false);
     setSelectedOption(index);
   };
 
@@ -243,15 +291,15 @@ export function QuestRunner({
     }
     startTransition(async () => {
       try {
-        // Перфект = ни одной потерянной жизни. Урок без заданий (total === 0)
-        // перфектом не считается — там нечего было проходить без ошибок.
-        const res = await completeLesson(lessonId, {
-          perfect: coreTotal > 0 && hearts === MAX_HEARTS,
-        });
+        // «Перфект» считает сервер по записанным ошибкам — клиентский флаг
+        // не принимается и подделать его нельзя.
+        const res = await completeLesson(lessonId);
         setResult(res);
         if (res.unlockedAchievements.length > 0) {
           setToasts((prev) => [...prev, ...res.unlockedAchievements]);
         }
+        // Урок завершён — черновики кода по нему больше не нужны.
+        if (draftUserId) clearLessonDrafts(draftUserId, lessonId);
         fireConfetti();
       } catch (err) {
         console.error("completeLesson failed", err);
@@ -259,9 +307,24 @@ export function QuestRunner({
     });
   };
 
+  // Ученик решил все задания, но закрыл урок до «Далее» — завершаем сами.
+  // Через таймер: finalize ставит состояние, а в теле эффекта это делать
+  // синхронно нельзя (react-hooks/set-state-in-effect).
+  useEffect(() => {
+    if (!resume?.finishImmediately || previewMode || result !== null) return;
+    const timer = window.setTimeout(finalize, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const markCorrect = () => {
     setStatus("correct");
     setCompletedCount((c) => c + 1);
+    setResumeHintVisible(false);
+    // Задание решено — его черновик кода больше не нужен.
+    if (draftUserId && kind === "code") {
+      removeDraft(draftUserId, lessonId, section, activeIndex);
+    }
     // Пошаговый прогресс фиксируем в фоне (только при первом прохождении).
     if (section === "core" && !alreadyCompleted && !previewMode) {
       void recordCorrectAnswer(lessonId).catch((err) =>
@@ -277,6 +340,7 @@ export function QuestRunner({
   };
 
   const onContinue = () => {
+    setResumeHintVisible(false);
     // Повтор после неверного доступен после короткой паузы. Код и введённый
     // текст сохраняем, чтобы ученик исправлял ответ, а не набирал его заново.
     if (status === "wrong") {
@@ -387,26 +451,28 @@ export function QuestRunner({
       .finally(() => setChecking(false));
   };
 
+  const persistTheoryStep = (nextIndex: number) => {
+    if (previewMode || alreadyCompleted) return;
+    void saveTheoryStep(lessonId, nextIndex).catch((err) =>
+      console.error("saveTheoryStep failed", err),
+    );
+  };
+
   const goToTheoryStep = (nextIndex: number) => {
     const safeIndex = Math.max(0, Math.min(theoryTotal - 1, nextIndex));
     setTheoryIndex(safeIndex);
-    try {
-      window.sessionStorage.setItem(theoryProgressKey, String(safeIndex));
-    } catch {
-      // Запрет sessionStorage не должен мешать прохождению урока.
-    }
+    setResumeHintVisible(false);
+    persistTheoryStep(safeIndex);
   };
 
   const continueTheory = () => {
+    setResumeHintVisible(false);
     if (theoryIndex < theoryTotal - 1) {
       goToTheoryStep(theoryIndex + 1);
       return;
     }
-    try {
-      window.sessionStorage.removeItem(theoryProgressKey);
-    } catch {
-      // Удаление необязательного локального состояния можно пропустить.
-    }
+    // Теория пройдена: theoryStep = числу шагов, при возврате откроются задания.
+    persistTheoryStep(theoryTotal);
     // Урок без заданий завершается сразу после последнего шага теории.
     if (coreTotal === 0) {
       finalize();
@@ -414,6 +480,17 @@ export function QuestRunner({
       setPhase("tasks");
     }
   };
+
+  // Короткая подсказка о восстановленной позиции: видна поверх контента,
+  // клики не перехватывает, гаснет по первому действию или через 6 секунд.
+  const resumeHint = resumeHintVisible ? (
+    <div
+      role="status"
+      className="pointer-events-none fixed left-1/2 top-[76px] z-20 w-max max-w-[90vw] -translate-x-1/2 rounded-xl border-2 border-green-200 bg-green-50 px-4 py-2 text-center text-sm font-bold text-green-700 shadow-sm lg:top-[84px]"
+    >
+      Продолжаем с того места, где ты остановился · {title}
+    </div>
+  ) : null;
 
   // ── Экран результата дополнительных заданий ──
   if (bonusFinished) {
@@ -509,6 +586,7 @@ export function QuestRunner({
   if (phase === "theory") {
     return (
       <>
+        {resumeHint}
         <Header
           hearts={hearts}
           percentage={percentage}
@@ -580,6 +658,7 @@ export function QuestRunner({
 
   return (
     <>
+      {resumeHint}
       <Header
         hearts={hearts}
         percentage={percentage}

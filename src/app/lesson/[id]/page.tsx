@@ -7,6 +7,8 @@ import {
   parseLessonContent,
   sanitizeLessonContent,
 } from "@/lib/lesson-content";
+import { computeLessonResume } from "@/lib/lesson-resume";
+import { splitTheoryIntoSections } from "@/lib/theory-sections";
 
 import { QuestRunner } from "./QuestRunner";
 
@@ -39,13 +41,25 @@ export default async function LessonPage({ params }: PageProps) {
     update: { totalQuestions: parsed.questions.length },
   });
 
+  // Восстанавливаем место остановки незавершённого урока. Если контент
+  // поменялся (наставник отредактировал), индексы зажаты в новые границы.
+  const resume = computeLessonResume({
+    isCompleted: progress.isCompleted,
+    theoryStep: progress.theoryStep,
+    answeredCount: progress.answeredCount,
+    wrongAttempts: progress.wrongAttempts,
+    theoryTotal: splitTheoryIntoSections(parsed.theory).length,
+    coreTotal: parsed.questions.length,
+  });
+
   return (
     <QuestRunner
       lessonId={lesson.id}
       title={lesson.title}
       content={sanitizeLessonContent(parsed)}
       alreadyCompleted={progress.isCompleted}
-      theoryProgressKey={`lesson-theory:v1:${userId}:${lesson.id}`}
+      resume={resume}
+      draftUserId={userId}
     />
   );
 }

@@ -2,7 +2,12 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
-import { E2E_GROUP, E2E_PIN, E2E_STUDENT } from "./sandbox";
+import {
+  E2E_GROUP,
+  E2E_PIN,
+  E2E_STUDENT,
+  resetLessonProgress,
+} from "./sandbox";
 
 const { lessonId } = JSON.parse(
   readFileSync(path.join(process.cwd(), "e2e", ".fixtures.json"), "utf8"),
@@ -20,7 +25,7 @@ async function login(page: Page) {
 }
 
 /** Проходит урок целиком: теория → верный ответ → экран результата. */
-async function completeLesson(page: Page) {
+async function completeLesson(page: Page, opts?: { training?: boolean }) {
   await page.goto(`/lesson/${lessonId}`);
 
   await expect(page.getByText("Тестовая теория")).toBeVisible();
@@ -28,10 +33,19 @@ async function completeLesson(page: Page) {
   await expect(page.getByRole("button", { name: "Назад" })).toBeDisabled();
   await page.getByRole("button", { name: "Продолжить" }).click();
   await expect(page.getByText("Второй шаг")).toBeVisible();
+  // Шаг теории пишется в базу серверным действием — ждём ответа, иначе
+  // reload может уйти раньше POST и проверка превратится в гонку.
+  await page.waitForLoadState("networkidle");
 
-  // Шаг теории сохраняется в пределах вкладки и переживает обновление.
+  // Шаг теории сохраняется в базе и переживает обновление страницы.
+  // На тренировке (урок пройден) каждый повтор начинается с начала.
   await page.reload();
-  await expect(page.getByText("Теория · шаг 2 из 2")).toBeVisible();
+  if (opts?.training) {
+    await expect(page.getByText("Теория · шаг 1 из 2")).toBeVisible();
+    await page.getByRole("button", { name: "Продолжить" }).click();
+  } else {
+    await expect(page.getByText("Теория · шаг 2 из 2")).toBeVisible();
+  }
   await page.getByRole("button", { name: "К заданиям" }).click();
 
   await expect(page.getByText("Сколько будет 2 + 2?")).toBeVisible();
@@ -87,7 +101,7 @@ test("повторное прохождение урока не начисляе
   await page.goto(`/lesson/${lessonId}`);
   await expect(page.getByText("Тренировка")).toBeVisible();
 
-  await completeLesson(page);
+  await completeLesson(page, { training: true });
 
   await expect(page.getByTestId("result-points")).toContainText("0");
   await expect(page.getByTestId("result-coins")).toContainText("0");
@@ -110,4 +124,45 @@ test("открытую ачивку видно в профиле и можно �
   await page.goto("/profile");
   await expect(page.getByText("Открытые ачивки")).toBeVisible();
   await expect(page.getByText("Первый урок", { exact: true })).toBeVisible();
+});
+
+test("выход из урока и возврат на место остановки", async ({ page }) => {
+  await resetLessonProgress(lessonId);
+  await login(page);
+
+  // Ученик дошёл до второго шага теории и вышел по крестику — без диалогов.
+  await page.goto(`/lesson/${lessonId}`);
+  await page.getByRole("button", { name: "Продолжить" }).click();
+  await expect(page.getByText("Теория · шаг 2 из 2")).toBeVisible();
+  await page.waitForLoadState("networkidle"); // POST saveTheoryStep
+  await page.getByRole("link", { name: "Выйти из урока" }).click();
+  await expect(page).toHaveURL(/\/learn/);
+
+  // Возврат: тот же шаг теории и короткая подсказка о месте остановки.
+  await page.goto(`/lesson/${lessonId}`);
+  await expect(
+    page.getByText("Продолжаем с того места", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByText("Теория · шаг 2 из 2")).toBeVisible();
+
+  // В заданиях ошибся один раз и вышел — жизни и позиция сохраняются.
+  await page.getByRole("button", { name: "К заданиям" }).click();
+  await page.waitForLoadState("networkidle"); // POST saveTheoryStep(theoryTotal)
+  await page.getByRole("button", { name: "3", exact: true }).click();
+  await page.getByRole("button", { name: "Проверить" }).click();
+  await expect(
+    page.getByRole("button", { name: /Снова через \d сек\.|Попробовать снова/ }),
+  ).toBeVisible();
+  await page.waitForLoadState("networkidle"); // POST checkAnswer (wrongAttempts)
+  await page.getByRole("link", { name: "Выйти из урока" }).click();
+
+  await page.goto(`/lesson/${lessonId}`);
+  // Назад на то же задание, жизней осталось две, подсказка видна снова.
+  await expect(page.getByText("Практика · задание 1 из 1")).toBeVisible();
+  await expect(
+    page.locator("header").getByText("2", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Продолжаем с того места", { exact: false }),
+  ).toBeVisible();
 });

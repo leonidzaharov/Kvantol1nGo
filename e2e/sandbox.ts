@@ -209,3 +209,18 @@ export async function resetClassroomSessions(): Promise<void> {
     await client.end();
   }
 }
+
+/** Сбрасывает прогресс ученика по уроку — тесты возврата начинаются с нуля. */
+export async function resetLessonProgress(lessonId: number): Promise<void> {
+  const client = new pg.Client({ connectionString: baseUrl() });
+  await client.connect();
+  try {
+    await client.query(`SET search_path TO "${E2E_SCHEMA}"`);
+    await client.query(
+      `DELETE FROM "UserLessonProgress" WHERE "lessonId" = $1`,
+      [lessonId],
+    );
+  } finally {
+    await client.end();
+  }
+}

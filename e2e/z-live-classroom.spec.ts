@@ -12,6 +12,7 @@ import {
   E2E_STUDENT,
   E2E_VISIBLE_RESOURCE,
   resetClassroomSessions,
+  resetLessonProgress,
 } from "./sandbox";
 
 const { lessonId } = JSON.parse(
@@ -47,6 +48,9 @@ test("дашборд подхватывает ученика и ошибки, с
   browser,
 }) => {
   await resetClassroomSessions();
+  // Тесты возврата на место остановки оставляют прогресс по уроку —
+  // здесь ученик должен начинать с чистого листа.
+  await resetLessonProgress(lessonId);
 
   const adminContext = await browser.newContext();
   const studentContext = await browser.newContext();
@@ -72,7 +76,9 @@ test("дашборд подхватывает ученика и ошибки, с
     const retryButton = studentPage.getByRole("button", {
       name: /Снова через \d сек\.|Попробовать снова/,
     });
-    await expect(retryButton).toBeDisabled();
+    // Ответ проверяет серверное действие — на медленной базе кнопка
+    // повтора появляется позже стандартных 5 секунд expect.
+    await expect(retryButton).toBeDisabled({ timeout: 15_000 });
     await expect(retryButton).toBeEnabled({ timeout: 7_000 });
     await retryButton.click();
   }
