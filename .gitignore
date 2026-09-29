@@ -76,3 +76,6 @@ lectures/
 
 # Pyodide копируется из node_modules postinstall'ом (scripts/copy-pyodide.mjs).
 /public/pyodide/
+
+# Локальные загрузки в dev (на сервере — /var/lib/quantorium/uploads).
+/uploads/

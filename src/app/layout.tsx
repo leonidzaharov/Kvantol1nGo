@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Nunito } from "next/font/google";
 import { headers } from "next/headers";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
 
@@ -14,7 +12,7 @@ const nunito = Nunito({
 
 export const metadata: Metadata = {
   // База для абсолютных URL в og/canonical. Прод-домен приложения.
-  metadataBase: new URL(process.env.APP_URL ?? process.env.AUTH_URL ?? "https://quantorium.vercel.app"),
+  metadataBase: new URL(process.env.APP_URL ?? process.env.AUTH_URL ?? "http://localhost:3100"),
   title: "Кванториум",
   description: "Геймифицированная образовательная платформа",
 };
@@ -50,8 +48,7 @@ export default async function RootLayout({
         />
         <ThemeToggle />
         {children}
-        {process.env.VERCEL === "1" && <Analytics />}
-        {process.env.VERCEL === "1" && <SpeedInsights />}
+
       </body>
     </html>
   );

@@ -1,24 +1,16 @@
-function databaseProjectRef(value) {
+// Защита от «случайно накатили на не ту базу».
+//
+// DATABASE_URL (приложение) и DIRECT_URL (миграции) обязаны вести в одну
+// базу. Хосты при этом могут отличаться (пулер соединений vs прямое
+// соединение) — сравниваем имя базы в path.
+//
+// Staging-конфигурация (KVANTO_DEPLOYMENT_ENV=staging) должна явно
+// подтвердить, что сидируется изолированная тестовая база.
+
+function databaseName(value) {
   if (!value) return null;
   try {
-    const url = new URL(value);
-    const directHost = /^db\.([a-z0-9]+)\.supabase\.co$/i.exec(url.hostname);
-    if (directHost?.[1]) return directHost[1].toLowerCase();
-
-    const poolerUser = /^postgres\.([a-z0-9]+)$/i.exec(
-      decodeURIComponent(url.username),
-    );
-    return poolerUser?.[1]?.toLowerCase() ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function apiProjectRef(value) {
-  if (!value) return null;
-  try {
-    const match = /^([a-z0-9]+)\.supabase\.co$/i.exec(new URL(value).hostname);
-    return match?.[1]?.toLowerCase() ?? null;
+    return new URL(value).pathname || null;
   } catch {
     return null;
   }
@@ -26,39 +18,20 @@ function apiProjectRef(value) {
 
 export function deploymentIsolationErrors(env) {
   const errors = [];
-  const databaseRef = databaseProjectRef(env.DATABASE_URL);
-  const directRef = databaseProjectRef(env.DIRECT_URL);
-  const supabaseRef = apiProjectRef(env.SUPABASE_URL);
 
-  if (databaseRef && directRef && databaseRef !== directRef) {
-    errors.push("DATABASE_URL и DIRECT_URL указывают на разные Supabase-проекты");
-  }
-  if (databaseRef && supabaseRef && databaseRef !== supabaseRef) {
-    errors.push("DATABASE_URL и SUPABASE_URL указывают на разные Supabase-проекты");
-  }
-  if (directRef && supabaseRef && directRef !== supabaseRef) {
-    errors.push("DIRECT_URL и SUPABASE_URL указывают на разные Supabase-проекты");
-  }
-
-  if (env.VERCEL_ENV === "preview") {
-    if (env.KVANTO_DEPLOYMENT_ENV !== "staging") {
-      errors.push(
-        "Vercel Preview требует KVANTO_DEPLOYMENT_ENV=staging до запуска миграций",
-      );
-    }
-    if (env.STAGING_DATABASE_CONFIRM !== "isolated-test-data") {
-      errors.push(
-        "Vercel Preview требует STAGING_DATABASE_CONFIRM=isolated-test-data",
-      );
-    }
+  const dbName = databaseName(env.DATABASE_URL);
+  const directName = databaseName(env.DIRECT_URL);
+  if (dbName && directName && dbName !== directName) {
+    errors.push("DATABASE_URL и DIRECT_URL указывают на разные базы");
   }
 
   if (
-    env.VERCEL_ENV === "production" &&
-    env.KVANTO_DEPLOYMENT_ENV &&
-    env.KVANTO_DEPLOYMENT_ENV !== "production"
+    env.KVANTO_DEPLOYMENT_ENV === "staging" &&
+    env.STAGING_DATABASE_CONFIRM !== "isolated-test-data"
   ) {
-    errors.push("Vercel Production не может использовать staging-конфигурацию");
+    errors.push(
+      "Staging требует STAGING_DATABASE_CONFIRM=isolated-test-data до запуска миграций/сидов",
+    );
   }
 
   return errors;

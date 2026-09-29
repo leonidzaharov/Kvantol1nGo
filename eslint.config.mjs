@@ -18,6 +18,8 @@ const eslintConfig = defineConfig([
     "duo/**",
     "_archive_old_project/**",
     "src/generated/**",
+    // Сборка Pyodide, копируется postinstall'ом из npm-пакета.
+    "public/pyodide/**",
   ]),
 ]);
 

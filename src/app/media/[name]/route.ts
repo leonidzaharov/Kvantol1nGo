@@ -4,7 +4,7 @@ import { IMAGE_TYPES, localImagePath } from "@/lib/image-files";
 export const runtime = "nodejs";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
-  if (process.env.STORAGE_DRIVER !== "local") return new Response(null, { status: 404 });
+  // Хранилище одно — локальная папка UPLOADS_DIR (см. upload-image).
   const { name } = await params;
   const file = localImagePath(name);
   if (!file) return new Response(null, { status: 404 });

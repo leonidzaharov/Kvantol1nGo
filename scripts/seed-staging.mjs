@@ -22,10 +22,7 @@ if (process.env.STAGING_DATABASE_CONFIRM !== "isolated-test-data") {
   fail("нужно STAGING_DATABASE_CONFIRM=isolated-test-data");
 }
 
-const isolationErrors = deploymentIsolationErrors({
-  ...process.env,
-  VERCEL_ENV: "preview",
-});
+const isolationErrors = deploymentIsolationErrors(process.env);
 if (isolationErrors.length > 0) {
   fail(isolationErrors.join("; "));
 }

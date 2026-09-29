@@ -37,20 +37,13 @@ export async function POST(request: Request): Promise<Response> {
     const ext = imageExtension(bytes);
     if (!ext || file.type !== IMAGE_TYPES[ext]) return Response.json({ error: "Можно только PNG, JPEG, GIF или WebP. Формат файла должен соответствовать содержимому." }, { status: 400 });
     const name = `${Date.now()}-${randomUUID()}.${ext}`;
-    const driver = process.env.STORAGE_DRIVER ?? "supabase";
-    if (driver === "local") {
-      await mkdir(uploadsDirectory(), { recursive: true });
-      await writeFile(localImagePath(name)!, bytes, { flag: "wx", mode: 0o640 });
-      return Response.json({ url: `/media/${name}` });
-    }
-    if (driver !== "supabase") throw new Error("Unknown storage driver");
-    const { createClient } = await import("@supabase/supabase-js");
-    const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } });
-    const { error } = await supabase.storage.from("lesson-images").upload(name, bytes, { contentType: IMAGE_TYPES[ext], cacheControl: "31536000" });
-    if (error) throw error;
-    return Response.json({ url: supabase.storage.from("lesson-images").getPublicUrl(name).data.publicUrl });
+    // Хранилище одно — локальная файловая система сервера (UPLOADS_DIR);
+    // файлы отдаёт /media/[name].
+    await mkdir(uploadsDirectory(), { recursive: true });
+    await writeFile(localImagePath(name)!, bytes, { flag: "wx", mode: 0o640 });
+    return Response.json({ url: `/media/${name}` });
   } catch (error) {
-    if (error instanceof TypeError) return Response.json({ error: "Не удалось прочитать загрузку или настройки хранилища." }, { status: 400 });
-    return Response.json({ error: "Не удалось сохранить картинку. Проверьте настройки и свободное место хранилища." }, { status: 500 });
+    if (error instanceof TypeError) return Response.json({ error: "Не удалось прочитать загрузку." }, { status: 400 });
+    return Response.json({ error: "Не удалось сохранить картинку. Проверьте UPLOADS_DIR и свободное место." }, { status: 500 });
   }
 }

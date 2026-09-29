@@ -67,7 +67,7 @@ const components: React.ComponentProps<typeof ReactMarkdown>["components"] = {
     />
   ),
   img: (props) => (
-    // Ссылки внешние (Supabase Storage), размеры заранее неизвестны —
+    // Файлы с нашего /media, размеры заранее неизвестны —
     // next/image не подходит.
     // eslint-disable-next-line @next/next/no-img-element
     <img
