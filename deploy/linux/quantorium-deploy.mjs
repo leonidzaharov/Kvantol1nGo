@@ -4,10 +4,12 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   readlinkSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -24,6 +26,9 @@ const DEFAULTS = {
   appUser: "quantorium",
   branch: "production",
   healthUrl: "http://127.0.0.1:3100/api/health",
+  // Сколько старых релизов и бэкапов держать на диске после деплоя.
+  keepReleases: 5,
+  keepBackups: 10,
 };
 
 function run(command, args, options = {}) {
@@ -80,6 +85,20 @@ function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
+// Удаляет самые старые (по mtime) элементы каталога сверх лимита.
+// Пути из skip не трогаем: активный и предыдущий (для отката) релизы.
+function pruneDirectory(dir, keep, skip = new Set()) {
+  if (!existsSync(dir)) return;
+  const entries = readdirSync(dir)
+    .map((name) => path.join(dir, name))
+    .filter((full) => !skip.has(full))
+    .map((full) => ({ full, mtime: statSync(full).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+  for (const entry of entries.slice(keep)) {
+    rmSync(entry.full, { recursive: true, force: true });
+  }
+}
+
 export async function runDeployment(system) {
   const target = await system.fetchTarget();
   const current = await system.currentCommit();
@@ -103,6 +122,18 @@ export async function runDeployment(system) {
   }
 
   await system.markDeployed(target);
+
+  // Диск не резиновый: старые релизы и бэкапы убираем после успешного
+  // деплоя. Уборка не должна ронять уже состоявшееся обновление.
+  try {
+    await system.pruneStorage();
+  } catch (error) {
+    console.error(
+      `Предупреждение: уборка старых файлов не удалась — ${
+        error instanceof Error ? error.message : error
+      }`,
+    );
+  }
   return { status: "deployed", commit: target };
 }
 
@@ -196,6 +227,19 @@ export function createLinuxSystem(config = {}) {
     async markDeployed(commit) {
       mkdirSync(path.dirname(settings.marker), { recursive: true });
       writeFileSync(settings.marker, `${commit}\n`, { mode: 0o600 });
+    },
+    async pruneStorage() {
+      const protectedReleases = new Set();
+      try {
+        protectedReleases.add(readlinkSync(settings.current));
+      } catch {
+        // current может ещё не быть ссылкой — тогда защищать нечего.
+      }
+      if (previousRelease) protectedReleases.add(previousRelease);
+      pruneDirectory(settings.releases, settings.keepReleases, protectedReleases);
+      // Удалённые каталоги оставляют записи в git worktree — чистим их.
+      run("git", ["-C", settings.repository, "worktree", "prune"]);
+      pruneDirectory(settings.backups, settings.keepBackups);
     },
   };
 }

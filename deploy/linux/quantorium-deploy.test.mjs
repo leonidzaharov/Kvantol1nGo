@@ -27,6 +27,7 @@ function fakeSystem({ current = "old", target = "new", healthy = true } = {}) {
       healthCheck: record("healthCheck", healthy),
       rollbackRelease: record("rollbackRelease"),
       markDeployed: record("markDeployed"),
+      pruneStorage: record("pruneStorage"),
     },
   };
 }
@@ -67,8 +68,9 @@ describe("automatic Debian deployment", () => {
       "restartApplication",
       "healthCheck",
       "markDeployed",
+      "pruneStorage",
     ]);
-    expect(events.at(-1)).toEqual(["markDeployed", "new"]);
+    expect(events.at(-2)).toEqual(["markDeployed", "new"]);
   });
 
   it("restores the previous application release when health check fails", async () => {
