@@ -52,7 +52,9 @@ async function completeLesson(page: Page, opts?: { training?: boolean }) {
   await page.getByRole("button", { name: "4", exact: true }).click();
   await page.getByRole("button", { name: "Проверить" }).click();
 
-  await expect(page.getByText("Отлично!")).toBeVisible();
+  // Проверка ответа — серверное действие с записью прогресса; на медленной
+  // базе ответ может занять больше стандартных 5 секунд expect.
+  await expect(page.getByText("Отлично!")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Далее" }).click();
 
   await expect(page.getByText("Урок пройден.")).toBeVisible({ timeout: 30_000 });

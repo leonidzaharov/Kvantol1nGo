@@ -13,6 +13,7 @@ import {
   recordClassroomPosition,
 } from "@/lib/classroom-progress";
 import { parseLessonContent } from "@/lib/lesson-content";
+import { markCoreQuestionSolved } from "@/lib/lesson-progress";
 import {
   IdSchema,
   parse,
@@ -209,18 +210,27 @@ export async function recordCodeAttempt(
       section,
       correct,
     }),
-    ...(!correct && section === "core"
+    ...(section === "core"
       ? [
-          prisma.userLessonProgress.upsert({
-            where: { userId_lessonId: { userId, lessonId } },
-            create: {
-              userId,
-              lessonId,
-              totalQuestions: content.questions.length,
-              wrongAttempts: 1,
-            },
-            update: { wrongAttempts: { increment: 1 } },
-          }),
+          // Верный запуск кода — серверная отметка «задание решено»
+          // (ожидаемый вывод ученику и так виден, скрытого ответа нет).
+          correct
+            ? markCoreQuestionSolved(
+                userId,
+                lessonId,
+                questionIndex,
+                content.questions.length,
+              )
+            : prisma.userLessonProgress.upsert({
+                where: { userId_lessonId: { userId, lessonId } },
+                create: {
+                  userId,
+                  lessonId,
+                  totalQuestions: content.questions.length,
+                  wrongAttempts: 1,
+                },
+                update: { wrongAttempts: { increment: 1 } },
+              }),
         ]
       : []),
   ]);

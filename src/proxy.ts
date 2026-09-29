@@ -16,9 +16,10 @@ import { authConfig } from './auth.config';
 //    политики в Report-Only (коммит b0e87d3).
 //
 // Почему 'strict-dynamic': скрипты, которые ДОВЕРЕННЫЙ код создаёт сам
-// (Pyodide с jsdelivr, воркеры раннеров, телеметрия Vercel), наследуют
-// доверие без перечисления доменов. Хосты в script-src оставлены как
-// запасной вариант для старых браузеров, которые strict-dynamic не знают.
+// (Pyodide из /pyodide, воркеры раннеров), наследуют доверие без
+// перечисления доменов. Внешних скриптов не осталось: Python хостится
+// локально, Supabase и телеметрия Vercel убраны — ходим только на свои
+// origin и на Sentry для отчётов об ошибках.
 //
 // ВАЖНО: nonce требует рендера страницы на каждый запрос. Статические
 // страницы (пререндер на билде) токена не получат и их скрипты будут
@@ -35,11 +36,11 @@ function buildCsp(nonce: string): string {
     "form-action 'self'",
     // 'unsafe-eval' — только в dev: React в разработке использует eval
     // для читаемых стеков ошибок. В проде он не нужен и запрещён.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval' https://cdn.jsdelivr.net${isDev ? " 'unsafe-eval'" : ''}`,
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'wasm-unsafe-eval'${isDev ? " 'unsafe-eval'" : ''}`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://*.supabase.co",
+    "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self' https://cdn.jsdelivr.net https://*.supabase.co https://vitals.vercel-insights.com https://*.ingest.sentry.io https://*.ingest.de.sentry.io",
+    "connect-src 'self' https://*.ingest.sentry.io https://*.ingest.de.sentry.io",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     // Встраиваемые плееры «Интересного» (card.tsx): YouTube-видео и проекты
@@ -67,6 +68,9 @@ export default NextAuth(authConfig).auth((request) => {
 });
 
 export const config = {
-  // Защищаем все маршруты, кроме API, статики и картинок
-  matcher: ['/((?!api|_next/static|_next/image|.*\\.png$).*)'],
+  // Middleware работает на страницах. Исключаем: API (своя проверка
+  // доступа в хендлерах), сборку Next и ЛЮБОЙ путь с расширением файла —
+  // картинки, /media/*, robots.txt, favicon и т.п. отдаются без CSP
+  // и без редиректа, как обычная статика.
+  matcher: ['/((?!api|_next/static|_next/image|.*\\..*).*)'],
 };

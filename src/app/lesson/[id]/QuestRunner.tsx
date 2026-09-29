@@ -19,7 +19,6 @@ import {
   checkAnswer,
   checkTextAnswer,
   completeLesson,
-  recordCorrectAnswer,
   saveTheoryStep,
   type CompleteLessonResult,
 } from "@/lib/actions/gamification";
@@ -325,12 +324,9 @@ export function QuestRunner({
     if (draftUserId && kind === "code") {
       removeDraft(draftUserId, lessonId, section, activeIndex);
     }
-    // Пошаговый прогресс фиксируем в фоне (только при первом прохождении).
-    if (section === "core" && !alreadyCompleted && !previewMode) {
-      void recordCorrectAnswer(lessonId).catch((err) =>
-        console.error("recordCorrectAnswer failed", err),
-      );
-    }
+    // Пошаговый прогресс уже записан на сервере внутри checkAnswer /
+    // checkTextAnswer / recordCodeAttempt — отдельный вызов не нужен,
+    // а «Далее» доступно только после их ответа, гонки нет.
   };
 
   const markWrong = () => {
@@ -377,21 +373,22 @@ export function QuestRunner({
     if (kind === "code" && challenge.type === "code") {
       if (running) return;
       setRunning(true);
-      void runCode(challenge.language, currentCode).then((res) => {
-        setRunning(false);
-        setCodeOutput(res.output);
+      void runCode(challenge.language, currentCode).then(async (res) => {
         // Сравнение «мягкое»: кавычки, лишние пробелы, ё/е и пустые строки
         // по краям не считаются ошибкой (см. output-match.ts).
         const passed =
           res.ok && outputsMatch(res.output, challenge.expectedOutput);
         if (!previewMode) {
-          void recordCodeAttempt(
-            lessonId,
-            section,
-            activeIndex,
-            passed,
-          ).catch((err) => console.error("recordCodeAttempt failed", err));
+          // Ждём ответа: серверная отметка «решено» должна попасть в базу
+          // до того, как ученик сможет нажать «Далее» и завершить урок.
+          try {
+            await recordCodeAttempt(lessonId, section, activeIndex, passed);
+          } catch (err) {
+            console.error("recordCodeAttempt failed", err);
+          }
         }
+        setRunning(false);
+        setCodeOutput(res.output);
         if (passed) {
           markCorrect();
         } else {

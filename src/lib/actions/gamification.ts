@@ -6,6 +6,10 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { parseLessonContent } from "@/lib/lesson-content";
+import {
+  assertCoreSolved,
+  markCoreQuestionSolved,
+} from "@/lib/lesson-progress";
 import { splitTheoryIntoSections } from "@/lib/theory-sections";
 import {
   advanceAchievements,
@@ -13,7 +17,7 @@ import {
 } from "@/lib/achievements";
 import { computeLessonRewards } from "@/lib/achievements-logic";
 import { IdSchema, parse, requireUser } from "@/lib/server-guard";
-import { calculateLevel, countQuestions } from "@/lib/gamification-logic";
+import { calculateLevel } from "@/lib/gamification-logic";
 import { canAccessLesson } from "@/lib/course-access";
 import { textAnswersMatch } from "@/lib/text-answer";
 import {
@@ -60,6 +64,13 @@ export async function completeLesson(
     await lockStudentBalance(tx, userId);
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
     const progress = await tx.userLessonProgress.findUnique({ where: { userId_lessonId: { userId, lessonId } } });
+    // Завершить можно только урок, где ВСЕ основные задания подтверждены
+    // сервером (answeredCore) — прямой вызов completeLesson без ответов
+    // наград не даёт. Для уже пройденного урока повторный вызов безопасен:
+    // награды зависят от firstCompletion и не задвоятся.
+    if (!progress?.isCompleted) {
+      assertCoreSolved(progress, totalQuestions);
+    }
     // «Перфект» считает сервер по записанным ошибкам — клиентский флаг
     // больше не принимаем (нельзя подделать безупречное прохождение).
     const perfect = totalQuestions > 0 && (progress?.wrongAttempts ?? 0) === 0;
@@ -180,18 +191,25 @@ export async function checkAnswer(
       section,
       correct,
     }),
-    ...(!correct && section === "core"
+    ...(section === "core"
       ? [
-          prisma.userLessonProgress.upsert({
-            where: { userId_lessonId: { userId, lessonId } },
-            create: {
-              userId,
-              lessonId,
-              totalQuestions: content.questions.length,
-              wrongAttempts: 1,
-            },
-            update: { wrongAttempts: { increment: 1 } },
-          }),
+          correct
+            ? markCoreQuestionSolved(
+                userId,
+                lessonId,
+                questionIndex,
+                content.questions.length,
+              )
+            : prisma.userLessonProgress.upsert({
+                where: { userId_lessonId: { userId, lessonId } },
+                create: {
+                  userId,
+                  lessonId,
+                  totalQuestions: content.questions.length,
+                  wrongAttempts: 1,
+                },
+                update: { wrongAttempts: { increment: 1 } },
+              }),
         ]
       : []),
   ]);
@@ -239,67 +257,30 @@ export async function checkTextAnswer(
       section,
       correct,
     }),
-    ...(!correct && section === "core"
+    ...(section === "core"
       ? [
-          prisma.userLessonProgress.upsert({
-            where: { userId_lessonId: { userId, lessonId } },
-            create: {
-              userId,
-              lessonId,
-              totalQuestions: content.questions.length,
-              wrongAttempts: 1,
-            },
-            update: { wrongAttempts: { increment: 1 } },
-          }),
+          correct
+            ? markCoreQuestionSolved(
+                userId,
+                lessonId,
+                questionIndex,
+                content.questions.length,
+              )
+            : prisma.userLessonProgress.upsert({
+                where: { userId_lessonId: { userId, lessonId } },
+                create: {
+                  userId,
+                  lessonId,
+                  totalQuestions: content.questions.length,
+                  wrongAttempts: 1,
+                },
+                update: { wrongAttempts: { increment: 1 } },
+              }),
         ]
       : []),
   ]);
 
   return correct;
-}
-
-/**
- * Засчитывает один правильный ответ — увеличивает счётчик,
- * но не выше totalQuestions. Используется QuestRunner для
- * пошагового прогресса в реальном времени.
- */
-export async function recordCorrectAnswer(lessonId: number): Promise<void> {
-  const userId = await requireUser();
-  lessonId = parse(IdSchema, lessonId);
-  if (!(await canAccessLesson(userId, lessonId))) {
-    throw new Error("FORBIDDEN");
-  }
-
-  const lesson = await prisma.lesson.findUnique({ where: { id: lessonId } });
-  if (!lesson) return;
-
-  const totalQuestions = countQuestions(lesson.content);
-  if (totalQuestions === 0) return;
-
-  const existing = await prisma.userLessonProgress.findUnique({
-    where: { userId_lessonId: { userId, lessonId } },
-  });
-
-  // После первого прохождения счётчик уже на максимуме — не трогаем.
-  if (existing?.isCompleted) return;
-
-  const next = Math.min(totalQuestions, (existing?.answeredCount ?? 0) + 1);
-
-  await prisma.userLessonProgress.upsert({
-    where: { userId_lessonId: { userId, lessonId } },
-    create: {
-      userId,
-      lessonId,
-      answeredCount: next,
-      totalQuestions,
-    },
-    update: {
-      answeredCount: next,
-      totalQuestions,
-    },
-  });
-
-  revalidatePath("/learn");
 }
 
 /**

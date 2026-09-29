@@ -199,6 +199,10 @@ model UserLessonProgress {
   // Последний просмотренный шаг теории: по нему урок возвращает ученика
   // на место остановки. theoryStep >= числа шагов означает «теория пройдена».
   theoryStep     Int       @default(0)
+  // Индексы заданий, которые СЕРВЕР подтвердил верными. completeLesson
+  // проверяет по ним, что ученик действительно решил всю основную часть,
+  // а не вызвал действие напрямую.
+  answeredCore   Int[]     @default([])
   isCompleted    Boolean   @default(false)
   startedAt      DateTime  @default(now())
   completedAt    DateTime?
@@ -488,8 +492,12 @@ model LoginAttempt {
   userId      String
   succeeded   Boolean
   attemptedAt DateTime @default(now())
+  // Хэш IP (sha256 с солью) — лимит на перебор по всем профилям сразу.
+  // Сырой IP не храним: журнал и так учебный, лишняя PII не нужна.
+  ipHash      String?
 
   @@index([userId, attemptedAt])
+  @@index([ipHash, attemptedAt])
 }
 
 // ============================================================

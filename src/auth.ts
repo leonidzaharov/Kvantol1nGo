@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import NextAuth, { CredentialsSignin } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
@@ -5,7 +7,16 @@ import { prisma } from "@/lib/db";
 import { authConfig } from "./auth.config";
 
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
-const RATE_LIMIT_MAX_FAILURES = 5;
+// После стольких неудач подряд неверный PIN отвечает «подожди 5 минут»
+// вместо безличного «неверно» — ребёнку с опечатками так честнее.
+const USER_MAX_FAILURES = 5;
+// Жёсткий потолок неудач с одного IP за окно — защита от перебора
+// чужих PIN через разные профили. Запас относительно класса за NAT:
+// 15 учеников с парой опечаток каждый — это ~30, а не 60.
+const IP_MAX_FAILURES = 60;
+// Журнал попыток держим неделю: для разбора инцидента хватает, а
+// таблица не раздувается без внешнего таймера (чистим ниже).
+const ATTEMPT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
 // Отдельный код ошибки для rate-limit, чтобы фронт мог показать
 // «Подожди 5 минут» вместо обобщённого «Неверный PIN». Для детского
@@ -13,6 +24,21 @@ const RATE_LIMIT_MAX_FAILURES = 5;
 // блок по count'у на 6-м запросе.
 class RateLimitedError extends CredentialsSignin {
   code = "rate_limited";
+}
+
+// IP берём из X-Forwarded-For/Real-IP — на проде их выставляет nginx,
+// поэтому подмена заголовка возможна только при прямом доступе к
+// Node-процессу, который слушает 127.0.0.1 и снаружи недоступен.
+function clientIpHash(request: Request): string | null {
+  const forwarded = request.headers.get("x-forwarded-for");
+  const ip = forwarded?.split(",")[0]?.trim() || request.headers.get("x-real-ip");
+  if (!ip) return null;
+  // Сырой адрес в журнале не храним (дети): хэш с солью из AUTH_SECRET
+  // даёт группировку по IP без PII.
+  return createHash("sha256")
+    .update(`${ip}:${process.env.AUTH_SECRET ?? "kvantolingo"}`)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -25,7 +51,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         loginName: { label: "Имя", type: "text" },
         pin: { label: "PIN", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         const pin =
           typeof credentials?.pin === "string" ? credentials.pin : "";
         if (!pin) {
@@ -59,36 +85,74 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           return null;
         }
 
-        // Rate-limit: 5 неудачных за 5 минут блокируют дальнейшие попытки
-        // до конца окна, даже если PIN внезапно правильный. Защищает
-        // 4-значный PIN от полного перебора (10000 комбинаций без лимита —
-        // секунды). Считаем ДО bcrypt.compare — иначе тратим ~100мс впустую.
+        // Фоновая уборка журнала: ~2% входов чистят записи старше недели.
+        // Best-effort, без await — падение не ломает логин.
+        if (Math.random() < 0.02) {
+          void prisma.loginAttempt
+            .deleteMany({
+              where: {
+                attemptedAt: {
+                  lt: new Date(Date.now() - ATTEMPT_RETENTION_MS),
+                },
+              },
+            })
+            .catch(() => {});
+        }
+
+        const ipHash = clientIpHash(request);
         const windowStart = new Date(Date.now() - RATE_LIMIT_WINDOW_MS);
-        const recentFailures = await prisma.loginAttempt.count({
-          where: {
-            userId: user.id,
-            succeeded: false,
-            attemptedAt: { gte: windowStart },
+
+        // Счётчики, сравнение PIN и запись попытки — в одной транзакции
+        // под advisory lock на ученика: параллельные попытки не проскочат
+        // мимо лимита одновременным count (гонка старого кода).
+        const { ok, userFailures, ipBlocked } = await prisma.$transaction(
+          async (tx) => {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${user.id}))`;
+
+            const [userFailures, ipFailures] = await Promise.all([
+              tx.loginAttempt.count({
+                where: {
+                  userId: user.id,
+                  succeeded: false,
+                  attemptedAt: { gte: windowStart },
+                },
+              }),
+              ipHash
+                ? tx.loginAttempt.count({
+                    where: {
+                      ipHash,
+                      succeeded: false,
+                      attemptedAt: { gte: windowStart },
+                    },
+                  })
+                : Promise.resolve(0),
+            ]);
+
+            // Жёсткий блок по IP до bcrypt: ботнету не достаются даже
+            // ~100 мс на сравнение хэша. Попытку всё равно записываем —
+            // затянувшаяся атака не выйдет из окна раньше времени.
+            const ipBlocked = ipFailures >= IP_MAX_FAILURES;
+
+            // Правильный PIN пускаем ВСЕГДА, даже когда у ученика уже
+            // куча неудач: иначе один ребёнок на общем компьютере мог бы
+            // «заблокировать» одноклассника, накидав ошибок в его профиль.
+            // Перебор тормозят лимит по IP и цена bcrypt, а не локаут.
+            const ok = ipBlocked ? false : await bcrypt.compare(pin, user.pinHash);
+
+            await tx.loginAttempt.create({
+              data: { userId: user.id, succeeded: ok, ipHash },
+            });
+            return { ok, userFailures, ipBlocked };
           },
-        });
-        if (recentFailures >= RATE_LIMIT_MAX_FAILURES) {
+        );
+
+        if (ipBlocked) {
           throw new RateLimitedError();
         }
-
-        const isPasswordValid = await bcrypt.compare(pin, user.pinHash);
-
-        // Логируем результат на best-effort: если запись упадёт (сетевой
-        // сбой Supabase), не валим логин — успешный bcrypt уже подтвердил
-        // личность. Без записи в худшем случае пропадёт один rate-limit-tick.
-        try {
-          await prisma.loginAttempt.create({
-            data: { userId: user.id, succeeded: isPasswordValid },
-          });
-        } catch {
-          /* noop */
-        }
-
-        if (!isPasswordValid) {
+        if (!ok) {
+          if (userFailures >= USER_MAX_FAILURES) {
+            throw new RateLimitedError();
+          }
           return null;
         }
 

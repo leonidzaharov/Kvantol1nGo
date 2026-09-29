@@ -22,7 +22,8 @@
     "verify:restore:synthetic": "node scripts/verify-restore.mjs --synthetic",
     "seed-resources": "node scripts/seed-resources.mjs",
     "seed:staging": "node scripts/seed-staging.mjs",
-    "vercel-build": "node scripts/check-env.mjs && prisma generate && prisma migrate deploy && next build"
+    "vercel-build": "node scripts/check-env.mjs && prisma generate && prisma migrate deploy && next build",
+    "postinstall": "node scripts/copy-pyodide.mjs"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",
@@ -71,6 +72,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.9",
     "prisma": "^7.8.0",
+    "pyodide": "^0.28.3",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",

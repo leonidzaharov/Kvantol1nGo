@@ -73,3 +73,6 @@ lectures/
 /assets ux/
 /handoff-private/
 /deliverables/
+
+# Pyodide копируется из node_modules postinstall'ом (scripts/copy-pyodide.mjs).
+/public/pyodide/

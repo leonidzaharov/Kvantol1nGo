@@ -9,12 +9,16 @@ export const authConfig = {
   callbacks: {
     authorized({ auth, request: { nextUrl } }) {
       const isLoggedIn = !!auth?.user;
-      // Защищенные маршруты
-      const isProtected = ['/lesson', '/achievements', '/learn', '/courses', '/leaderboard', '/profile', '/interesting', '/admin'].some(route =>
-        nextUrl.pathname.startsWith(route)
+      // Закрыто по умолчанию: публичны только перечисленные страницы.
+      // Новый маршрут автоматически требует входа — забыть добавить его
+      // в «защищённые» больше нельзя. Файлы с расширением (картинки,
+      // robots.txt, /media/*) matcher в proxy.ts вообще не пропускает
+      // сюда — они отдаются как статика.
+      const isPublic = ['/', '/mentor', '/privacy', '/creator'].includes(
+        nextUrl.pathname,
       );
 
-      if (isProtected && !isLoggedIn) {
+      if (!isPublic && !isLoggedIn) {
         // Возвращаем редирект НА ВХОД сами, а не `false`: наш proxy.ts теперь
         // оборачивает свою функцию в auth(...), а в этом режиме next-auth
         // дефолтный редирект НЕ делает (уважает только Response из authorized).
