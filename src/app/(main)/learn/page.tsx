@@ -17,9 +17,6 @@ import { Header } from "./header";
 import { UnitBanner } from "./unit-banner";
 import { LessonButton } from "./lesson-button";
 
-// Сердца пока заглушка — поля в схеме нет (появится на Шаге C: миграция).
-const PLACEHOLDER_HEARTS = 5;
-
 export default async function LearnPage() {
   const session = await auth();
   if (!session?.user?.id) {
@@ -31,12 +28,43 @@ export default async function LearnPage() {
     redirect("/api/orphan-signout");
   }
 
-  // Активный курс — из cookie. Нет/битый → на экран выбора.
+  // Активный курс — из cookie. Если cookie ещё нет (первый вход, другой
+  // браузер, общий компьютер), подставляем курс автоматически: сначала тот,
+  // где был последний прогресс, иначе первый доступный по порядку. Так ученик
+  // после входа сразу продолжает учёбу, а не петляет через выбор курса.
   const cookieStore = await cookies();
   const activeRaw = cookieStore.get(ACTIVE_COURSE_COOKIE)?.value;
-  const activeCourseId = activeRaw ? Number(activeRaw) : NaN;
+  let activeCourseId = activeRaw ? Number(activeRaw) : NaN;
   if (!Number.isInteger(activeCourseId)) {
-    redirect("/courses");
+    if (!context.isAdmin && (!context.groupId || !context.track)) {
+      redirect("/courses");
+    }
+    const [lastProgress, candidates] = await Promise.all([
+      prisma.userLessonProgress.findFirst({
+        where: { userId },
+        orderBy: { updatedAt: "desc" },
+        select: { lesson: { select: { categoryId: true } } },
+      }),
+      prisma.category.findMany({
+        where: context.isAdmin
+          ? undefined
+          : {
+              isPublished: true,
+              track: context.track ?? undefined,
+              groupAccess: { some: { groupId: context.groupId ?? -1 } },
+            },
+        orderBy: { id: "asc" },
+        select: { id: true },
+      }),
+    ]);
+    const candidateIds = candidates.map((c) => c.id);
+    activeCourseId =
+      lastProgress && candidateIds.includes(lastProgress.lesson.categoryId)
+        ? lastProgress.lesson.categoryId
+        : (candidateIds[0] ?? NaN);
+    if (!Number.isInteger(activeCourseId)) {
+      redirect("/courses");
+    }
   }
 
   const [user, category] = await Promise.all([
@@ -132,7 +160,6 @@ export default async function LearnPage() {
           courseIcon={category.icon}
           points={user.totalXp}
           coins={user.currency}
-          hearts={PLACEHOLDER_HEARTS}
         />
       </StickyWrapper>
 
@@ -155,7 +182,8 @@ export default async function LearnPage() {
                 totalCount={lessons.length - 1}
                 current={isCurrent}
                 locked={false}
-                percentage={activeLessonPercentage}
+                completed={lesson.completed}
+                percentage={isCurrent ? activeLessonPercentage : lesson.percentage}
               />
             );
           })}

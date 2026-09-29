@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Coins, Heart, Zap } from "lucide-react";
+import { Coins, Zap } from "lucide-react";
 
 type UserProgressProps = {
   courseTitle: string;
@@ -7,8 +7,6 @@ type UserProgressProps = {
   points: number;
   /** Монеты — тратятся офлайн у наставника (наклейки/привилегии). */
   coins: number;
-  /** Сердца пока заглушка (в схеме нет поля) — появятся на Шаге C (миграция). */
-  hearts: number;
 };
 
 export const UserProgress = ({
@@ -16,7 +14,6 @@ export const UserProgress = ({
   courseIcon,
   points,
   coins,
-  hearts,
 }: UserProgressProps) => {
   return (
     <div className="flex w-full items-center justify-between gap-x-2">
@@ -35,11 +32,6 @@ export const UserProgress = ({
       <div className="flex items-center gap-x-1 font-bold text-amber-500">
         <Coins className="h-5 w-5 fill-amber-300" />
         {coins}
-      </div>
-
-      <div className="flex items-center gap-x-1 font-bold text-rose-500">
-        <Heart className="h-5 w-5 fill-rose-500" />
-        {hearts}
       </div>
     </div>
   );

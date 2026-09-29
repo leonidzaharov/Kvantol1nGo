@@ -13,6 +13,8 @@ type LessonButtonProps = {
   totalCount: number;
   locked?: boolean;
   current?: boolean;
+  /** Урок реально пройден этим учеником (из UserLessonProgress). */
+  completed?: boolean;
   percentage: number;
 };
 
@@ -69,6 +71,7 @@ export const LessonButton = ({
   totalCount,
   locked,
   current,
+  completed,
   percentage,
 }: LessonButtonProps) => {
   // Змейка: смещение кнопки вправо по синусоидальному циклу из 8 шагов.
@@ -85,12 +88,15 @@ export const LessonButton = ({
 
   const isFirst = index === 0;
   const isLast = index === totalCount;
-  const isCompleted = !current && !locked;
-  const lessonLabel = current
-    ? `Начать урок ${index + 1}`
-    : isCompleted
-      ? `Повторить урок ${index + 1}`
-      : `Открыть урок ${index + 1}`;
+  const isCompleted = completed === true;
+  const isInProgress = current === true && percentage > 0;
+  const lessonLabel = isInProgress
+    ? `Продолжить урок ${index + 1}`
+    : current
+      ? `Начать урок ${index + 1}`
+      : isCompleted
+        ? `Повторить урок ${index + 1}`
+        : `Открыть урок ${index + 1}`;
 
   const Icon = isCompleted ? Check : isLast ? Crown : Star;
 
@@ -124,7 +130,7 @@ export const LessonButton = ({
       {current ? (
         <div className="relative h-[102px] w-[102px]">
           <div className="absolute -top-6 left-2.5 z-10 animate-bounce rounded-xl border-2 bg-white px-3 py-2.5 text-sm font-bold uppercase tracking-wide text-green-500">
-            Начать
+            {isInProgress ? "Продолжить" : "Начать"}
             <div
               className="absolute -bottom-2 left-1/2 h-0 w-0 -translate-x-1/2 border-x-8 border-t-8 border-x-transparent border-t-white"
               aria-hidden
