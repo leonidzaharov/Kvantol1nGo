@@ -2,38 +2,117 @@
 
 import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, Crown, Pause, Play } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { JSAnimation } from "animejs";
 import { CREATOR_ACHIEVEMENT, CREATOR_LEADERBOARD_ENTRY, CREATOR_REGALIA } from "@/lib/creator-profile";
 import styles from "./creator-profile.module.css";
 
-// A deterministic dot matrix keeps the server and browser render identical.
-const HEART_CELLS = Array.from({ length: 21 * 21 }, (_, index) => {
-  const column = index % 21;
-  const row = Math.floor(index / 21);
-  const x = (column - 10) / 8;
-  const y = (10 - row) / 8;
-  return { column, row, inside: (x * x + y * y - 1) ** 3 - x * x * y ** 3 <= 0 };
-}).filter((dot) => dot.inside);
-const HEART_CELL_KEYS = new Set(HEART_CELLS.map(({ column, row }) => `${column}-${row}`));
-const DOTS = HEART_CELLS.map(({ column, row }) => {
-  let depth = 0;
-  for (let radius = 1; radius <= 3; radius += 1) {
-    const neighbors = [-radius, 0, radius];
-    if (neighbors.some((dx) => neighbors.some((dy) => !HEART_CELL_KEYS.has(`${column + dx}-${row + dy}`)))) break;
-    depth = radius;
+// ============================================================
+// Сердце из точек. Вся геометрия считается один раз на уровне модуля и только
+// из целочисленного шума, поэтому серверный и клиентский рендер совпадают.
+// ============================================================
+
+const CENTER = 300;
+const HEART_SCALE = 10;
+const HEART_LAYERS = [
+  { scale: 1, count: 56, radius: 5.6 },
+  { scale: 0.84, count: 46, radius: 4.6 },
+  { scale: 0.68, count: 36, radius: 3.7 },
+  { scale: 0.52, count: 26, radius: 2.9 },
+  { scale: 0.37, count: 16, radius: 2.2 },
+];
+const TICK_COUNT = 96;
+const SEGMENT_COLORS = ["#ff626b", "#ffbb51", "#68ed9b", "#38ddd5", "#699fff", "#b394ff", "#ff87b5", "#c8f871"];
+const SEGMENT_RADIUS = 268;
+const SEGMENT_LENGTH = 138;
+
+/** Детерминированный шум 0..1 на целых операциях (без Math.random). */
+function noise(seed: number): number {
+  let t = (seed + 0x6d2b79f5) | 0;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+const round = (value: number) => Math.round(value * 10) / 10;
+
+function heartPoint(t: number) {
+  const x = 16 * Math.sin(t) ** 3;
+  const y = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+  return { x, y: y + 2.2 };
+}
+
+// Половина контура t ∈ [0, π] с накопленной длиной дуги: вторая половина
+// сердца получается зеркалированием, поэтому выемка и кончик лежат строго
+// на оси и слои не расходятся.
+const HALF_CONTOUR = (() => {
+  const steps = 720;
+  const points: { x: number; y: number }[] = [];
+  const cumulative = [0];
+  for (let i = 0; i <= steps; i += 1) {
+    const point = heartPoint((i / steps) * Math.PI);
+    if (i > 0) {
+      const previous = points[i - 1];
+      cumulative.push(cumulative[i - 1] + Math.hypot(point.x - previous.x, point.y - previous.y));
+    }
+    points.push(point);
   }
+  return { points, cumulative, total: cumulative[steps] };
+})();
+
+function pointAtArc(arc: number) {
+  const index = HALF_CONTOUR.cumulative.findIndex((length) => length >= arc);
+  return HALF_CONTOUR.points[index < 0 ? HALF_CONTOUR.points.length - 1 : index];
+}
+
+// В каждом слое точка ровно в выемке, точка ровно на кончике и зеркальные
+// пары между ними — по центральной оси выстраивается аккуратная колонка.
+const HEART_DOTS = HEART_LAYERS.flatMap((layer, layerIndex) => {
+  const pairCount = (layer.count - 2) / 2;
+  const spots: { x: number; y: number; seed: number }[] = [
+    { ...pointAtArc(0), seed: 0 },
+    { ...pointAtArc(HALF_CONTOUR.total), seed: 1 },
+    ...Array.from({ length: pairCount }, (_, i) => ({
+      ...pointAtArc((HALF_CONTOUR.total * (i + 1)) / (pairCount + 1)),
+      seed: i + 2,
+    })).flatMap((spot) => [spot, { ...spot, x: -spot.x }]),
+  ];
+  return spots.map((point, index) => {
+    const seed = layerIndex * 1000 + point.seed;
+    return {
+      key: `${layerIndex}-${index}`,
+      layer: layerIndex,
+      cx: round(CENTER + point.x * HEART_SCALE * layer.scale),
+      cy: round(CENTER - point.y * HEART_SCALE * layer.scale),
+      r: round(layer.radius * (0.7 + noise(seed + 13) * 0.6)),
+      opacity: round(0.5 + noise(seed + 29) * 0.5),
+    };
+  });
+});
+
+const TICKS = Array.from({ length: TICK_COUNT }, (_, index) => {
+  const angle = (index / TICK_COUNT) * Math.PI * 2;
+  const long = index % 8 === 0;
+  const inner = long ? 228 : 234;
+  const outer = 244;
   return {
-    column,
-    row,
-    size: [4, 2.5, 1.3, 0.7][depth],
-    opacity: [0.84, 0.68, 0.54, 0.42][depth],
+    key: index,
+    x1: round(CENTER + Math.cos(angle) * inner),
+    y1: round(CENTER + Math.sin(angle) * inner),
+    x2: round(CENTER + Math.cos(angle) * outer),
+    y2: round(CENTER + Math.sin(angle) * outer),
+    opacity: long ? 0.7 : 0.35,
   };
 });
-const COLORS = ["#ff626b", "#ffbb51", "#68ed9b", "#38ddd5", "#699fff", "#b394ff", "#ff87b5", "#c8f871"];
+
+const SEGMENT_GAP = round(Math.PI * 2 * SEGMENT_RADIUS - SEGMENT_LENGTH);
+
+const baseRadius = (target: unknown) => Number((target as SVGElement).dataset.r ?? 0);
+const baseOpacity = (target: unknown) => Number((target as SVGElement).dataset.o ?? 1);
 
 export function CreatorProfileExperience() {
   const rootRef = useRef<HTMLDivElement>(null);
+  const glowId = useId();
   const [paused, setPaused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
 
@@ -59,24 +138,24 @@ export function CreatorProfileExperience() {
       });
     };
 
-    void import("animejs").then(({ animate }) => {
+    void import("animejs").then(({ animate, stagger }) => {
       if (cancelled) return;
       animations.push(
+        // Волна дыхания идёт от внешнего контура к свободному центру.
         animate(root.querySelectorAll("[data-heart-dot]"), {
-          scale: [0.62, 1.12, 0.76, 1, 0.62],
-          duration: 2400,
-          delay: (_target: unknown, index = 0) => {
-            const dot = DOTS[index];
-            return Math.hypot(dot.column - 10, dot.row - 9) * 65;
-          },
-          ease: "inOutSine", loop: true,
+          r: { from: (target: unknown) => baseRadius(target) * 0.55, to: (target: unknown) => baseRadius(target) * 1.18 },
+          opacity: { from: (target: unknown) => baseOpacity(target) * 0.4, to: (target: unknown) => baseOpacity(target) },
+          duration: 1500, delay: stagger([0, 1100]), ease: "inOutSine", alternate: true, loop: true,
         }),
-        animate(root.querySelectorAll("[data-orbit]"), {
-          rotate: [0, 360], duration: 80000, ease: "linear", loop: true,
+        animate(root.querySelectorAll("[data-heart-pulse]"), {
+          scale: [1, 1.045, 1, 1.025, 1], duration: 2600, ease: "inOutQuad", loop: true,
         }),
-        animate(root.querySelectorAll("[data-inner-orbit]"), {
-          rotate: [0, -360], duration: 42000, ease: "linear", loop: true,
+        animate(root.querySelectorAll("[data-segment]"), {
+          opacity: [0.45, 1], duration: 1400, delay: stagger(170), ease: "inOutSine", alternate: true, loop: true,
         }),
+        animate(root.querySelectorAll("[data-orbit]"), { rotate: 360, duration: 72000, ease: "linear", loop: true }),
+        animate(root.querySelectorAll("[data-inner-orbit]"), { rotate: -360, duration: 40000, ease: "linear", loop: true }),
+        animate(root.querySelectorAll("[data-ticks]"), { rotate: 360, duration: 240000, ease: "linear", loop: true }),
       );
       observer = new IntersectionObserver(([entry]) => {
         visible = entry.isIntersecting;
@@ -117,27 +196,46 @@ export function CreatorProfileExperience() {
         <div className={styles.visual}>
           <div className={styles.instrument} aria-hidden="true">
             <div className={styles.halo} />
-            <div className={styles.outerRim} />
-            <div className={styles.orbit} data-orbit>
-              <svg viewBox="0 0 600 600" className={styles.rings}>
-                {COLORS.map((color, index) => (
-                  <circle key={color} cx="300" cy="300" r="272" fill="none" stroke={color} strokeWidth="4" strokeDasharray="192 1517" transform={`rotate(${index * 45 - 90} 300 300)`} />
+            <svg viewBox="0 0 600 600" className={styles.canvas}>
+              <defs>
+                <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
+                  <feGaussianBlur stdDeviation="4" result="blur" />
+                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
+              </defs>
+
+              <g className={styles.rings} fill="none" stroke="currentColor">
+                <circle cx={CENTER} cy={CENTER} r="292" strokeWidth="1" strokeOpacity=".55" />
+                <circle cx={CENTER} cy={CENTER} r="284" strokeWidth=".75" strokeOpacity=".35" strokeDasharray="2 6" />
+                <circle cx={CENTER} cy={CENTER} r="252" strokeWidth="1" strokeOpacity=".5" />
+                <circle cx={CENTER} cy={CENTER} r="222" strokeWidth=".75" strokeOpacity=".3" />
+                <circle cx={CENTER} cy={CENTER} r="196" strokeWidth=".75" strokeOpacity=".2" strokeDasharray="1 5" />
+              </g>
+
+              <g className={styles.ticks} data-ticks stroke="currentColor" strokeWidth="1.25" strokeLinecap="round">
+                {TICKS.map((tick) => (
+                  <line key={tick.key} x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} strokeOpacity={tick.opacity} />
                 ))}
-              </svg>
-            </div>
-            <div className={styles.ticks} />
-            <div className={styles.innerRim} />
-            <div className={styles.innerOrbit} data-inner-orbit>
-              <svg viewBox="0 0 600 600" className={styles.rings}>
-                <circle cx="300" cy="300" r="222" fill="none" stroke="#ffc5a2" strokeWidth="1.5" strokeDasharray="210 1185" />
-                <circle cx="300" cy="300" r="214" fill="none" stroke="#ffc5a2" strokeOpacity=".45" strokeWidth="1" strokeDasharray="145 1200" />
-              </svg>
-            </div>
-            <div className={styles.heart}>
-              {DOTS.map(({ column, row, size, opacity }) => (
-                <span key={`${column}-${row}`} data-heart-dot className={styles.dot} style={{ left: `${column * 5}%`, top: `${row * 5}%`, width: `${size}%`, opacity }} />
-              ))}
-            </div>
+              </g>
+
+              <g className={styles.orbit} data-orbit fill="none" strokeWidth="5" strokeLinecap="round" filter={`url(#${glowId})`}>
+                {SEGMENT_COLORS.map((color, index) => (
+                  <circle key={color} data-segment cx={CENTER} cy={CENTER} r={SEGMENT_RADIUS} stroke={color} strokeDasharray={`${SEGMENT_LENGTH} ${SEGMENT_GAP}`} transform={`rotate(${index * 45 - 90} ${CENTER} ${CENTER})`} />
+                ))}
+              </g>
+
+              <g className={styles.innerOrbit} data-inner-orbit fill="none" stroke="currentColor" strokeLinecap="round">
+                <circle cx={CENTER} cy={CENTER} r="214" strokeWidth="1.5" strokeDasharray="190 1155" />
+                <circle cx={CENTER} cy={CENTER} r="207" strokeWidth="1" strokeOpacity=".5" strokeDasharray="120 1181" transform={`rotate(150 ${CENTER} ${CENTER})`} />
+                <circle cx={CENTER} cy={CENTER} r="214" strokeWidth="1.5" strokeOpacity=".7" strokeDasharray="60 1285" transform={`rotate(230 ${CENTER} ${CENTER})`} />
+              </g>
+
+              <g className={styles.heart} data-heart-pulse fill="currentColor">
+                {HEART_DOTS.map((dot) => (
+                  <circle key={dot.key} data-heart-dot data-layer={dot.layer} data-r={dot.r} data-o={dot.opacity} cx={dot.cx} cy={dot.cy} r={dot.r} opacity={dot.opacity} />
+                ))}
+              </g>
+            </svg>
             <span className={styles.heartCaption}>ЛЮБОПЫТСТВО. КОД. ЛЮБОВЬ.</span>
           </div>
           <div className={styles.visualFooter}>
