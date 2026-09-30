@@ -25,7 +25,7 @@ const DEFAULTS = {
   backups: "/var/backups/quantorium",
   appUser: "quantorium",
   branch: "production",
-  healthUrl: "http://127.0.0.1:3100/api/health",
+  healthUrl: "http://192.168.0.28:3100/api/health",
   // Сколько старых релизов и бэкапов держать на диске после деплоя.
   keepReleases: 5,
   keepBackups: 10,
