@@ -7,7 +7,7 @@ import { z } from "zod";
 
 import { prisma } from "@/lib/db";
 import { recordAdminAudit } from "@/lib/admin-audit";
-import { IdSchema, requireAdmin, requireUser } from "@/lib/server-guard";
+import { IdSchema, UserIdSchema, requireAdmin, requireUser } from "@/lib/server-guard";
 import {
   isNicknameAvailable,
   MentorLabelSchema,
@@ -133,7 +133,7 @@ export async function updateStudent(
 ): Promise<StudentFormState> {
   const actorId = await requireAdmin();
 
-  const userId = z.uuid().safeParse(formData.get("userId"));
+  const userId = UserIdSchema.safeParse(formData.get("userId"));
   if (!userId.success) return { error: "Некорректный профиль ученика" };
   const nickname = StudentNicknameSchema.safeParse(formData.get("nickname"));
   if (!nickname.success) return { error: firstError(nickname.error) };
@@ -202,7 +202,7 @@ export async function updateStudent(
 /** Удалить профиль ученика и все связанные с ним данные. */
 export async function deleteStudent(formData: FormData): Promise<void> {
   const actorId = await requireAdmin();
-  const userId = z.uuid().parse(formData.get("userId"));
+  const userId = UserIdSchema.parse(formData.get("userId"));
 
   const deleted = await prisma.$transaction(async (tx) => {
     const student = await tx.user.findFirst({

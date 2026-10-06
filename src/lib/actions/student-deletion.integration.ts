@@ -32,8 +32,11 @@ function formWith(name: string, value: string): FormData {
   return formData;
 }
 
-async function createStudentFixture(groupId: number, suffix: string) {
-  const id = randomUUID();
+async function createStudentFixture(
+  groupId: number,
+  suffix: string,
+  id: string = randomUUID(),
+) {
   const student = await prisma.user.create({
     data: {
       id,
@@ -100,6 +103,91 @@ describe("student and group deletion Server Actions + PostgreSQL", () => {
     await expect(
       prisma.group.findUnique({ where: { id: group.id } }),
     ).resolves.not.toBeNull();
+  });
+
+  it("deletes a student with a legacy non-UUID id from the migrated database", async () => {
+    const group = await prisma.group.create({
+      data: { name: `${TEST_PREFIX} legacy ${randomUUID()}`, track: "intro" },
+    });
+    const student = await createStudentFixture(group.id, "наследный", "user-123");
+
+    await deleteStudent(formWith("userId", student.id));
+
+    await expect(
+      prisma.user.findUnique({ where: { id: "user-123" } }),
+    ).resolves.toBeNull();
+  });
+
+  it("deletes a student who has progress, rewards, classroom and review data", async () => {
+    const group = await prisma.group.create({
+      data: { name: `${TEST_PREFIX} full ${randomUUID()}`, track: "intro" },
+    });
+    const student = await createStudentFixture(group.id, "полный");
+    const category = await prisma.category.create({
+      data: { name: `${TEST_PREFIX} курс` },
+    });
+    const lesson = await prisma.lesson.create({
+      data: { categoryId: category.id, title: `${TEST_PREFIX} урок`, content: "{}" },
+    });
+    const achievement = await prisma.achievement.create({
+      data: { title: `${TEST_PREFIX} ачивка`, description: "Тест", targetValue: 1 },
+    });
+    const session = await prisma.classSession.create({
+      data: { groupId: group.id, lessonId: lesson.id },
+    });
+    const assignment = await prisma.reviewAssignment.create({
+      data: { title: `${TEST_PREFIX} работа`, instructions: "Тест", responseType: "TEXT" },
+    });
+
+    await prisma.user.update({
+      where: { id: student.id },
+      data: { showcaseAchievementId: achievement.id, currency: 40, pixelsRedeemed: 1 },
+    });
+    await prisma.userLessonProgress.create({
+      data: { userId: student.id, lessonId: lesson.id, isCompleted: true },
+    });
+    await prisma.userAchievement.create({
+      data: { userId: student.id, achievementId: achievement.id, isUnlocked: true },
+    });
+    await prisma.pixelRedemption.create({
+      data: { userId: student.id, actorId: INTEGRATION_ADMIN_ID, pixels: 1, coins: 20 },
+    });
+    await prisma.sessionStudentProgress.create({
+      data: { sessionId: session.id, userId: student.id },
+    });
+    await prisma.sessionQuestionProgress.create({
+      data: { sessionId: session.id, userId: student.id, section: "core", questionIndex: 0 },
+    });
+    await prisma.reviewAssignmentUser.create({
+      data: { assignmentId: assignment.id, userId: student.id },
+    });
+    await prisma.reviewSubmission.create({
+      data: {
+        assignmentId: assignment.id,
+        userId: student.id,
+        versions: { create: { version: 1, content: "ответ" } },
+      },
+    });
+
+    try {
+      await deleteStudent(formWith("userId", student.id));
+      await expect(
+        prisma.user.findUnique({ where: { id: student.id } }),
+      ).resolves.toBeNull();
+    } finally {
+      await prisma.reviewAssignment.delete({ where: { id: assignment.id } });
+      await prisma.classSession.deleteMany({ where: { id: session.id } });
+      await prisma.userLessonProgress.deleteMany({ where: { lessonId: lesson.id } });
+      await prisma.userAchievement.deleteMany({ where: { achievementId: achievement.id } });
+      await prisma.user.updateMany({
+        where: { showcaseAchievementId: achievement.id },
+        data: { showcaseAchievementId: null },
+      });
+      await prisma.pixelRedemption.deleteMany({ where: { userId: student.id } });
+      await prisma.achievement.delete({ where: { id: achievement.id } });
+      await prisma.lesson.delete({ where: { id: lesson.id } });
+      await prisma.category.delete({ where: { id: category.id } });
+    }
   });
 
   it("deletes a group, every student in it, and their identifying records", async () => {

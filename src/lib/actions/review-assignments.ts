@@ -16,10 +16,9 @@ import {
   canSubmitReviewAssignment,
   type ReviewAccessSnapshot,
 } from "@/lib/review-access";
-import { IdSchema, parse, requireAdmin, requireUser } from "@/lib/server-guard";
+import { IdSchema, UserIdSchema, parse, requireAdmin, requireUser } from "@/lib/server-guard";
 
 const GroupIdListSchema = z.array(IdSchema).max(200);
-const UserIdSchema = z.string().uuid();
 const UserIdListSchema = z.array(UserIdSchema).max(500);
 const AssignmentStatusSchema = z.enum(["DRAFT", "PUBLISHED", "ARCHIVED"]);
 

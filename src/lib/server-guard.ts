@@ -73,3 +73,7 @@ export function parse<T extends z.ZodTypeAny>(
 
 // Общие схемы — реиспользуемые id-валидаторы.
 export const IdSchema = z.number().int().positive().max(1_000_000);
+// User.id — строка. Новые профили получают UUID, но в перенесённой базе
+// есть наследные id (например, «user-123»), поэтому формат не проверяем:
+// Prisma передаёт значение параметром, а доступ решает сама выборка.
+export const UserIdSchema = z.string().trim().min(1).max(64);

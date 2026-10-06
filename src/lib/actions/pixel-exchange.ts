@@ -3,12 +3,12 @@ import { lockStudentBalance } from "@/lib/student-balance-lock";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { requireAdmin } from "@/lib/server-guard";
+import { UserIdSchema, requireAdmin } from "@/lib/server-guard";
 import { COINS_PER_PIXEL, COURSE_PIXEL_LIMIT } from "@/lib/pixel-economy";
 export type PixelExchangeState = { error?: string; success?: string } | null;
 export async function recordPixelExchange(_previous: PixelExchangeState, data: FormData): Promise<PixelExchangeState> {
   const actorId = await requireAdmin();
-  const parsed = z.object({ userId: z.uuid(), requestId: z.uuid(), pixels: z.coerce.number().int().min(1).max(COURSE_PIXEL_LIMIT), confirmed: z.literal("on") }).safeParse(Object.fromEntries(data));
+  const parsed = z.object({ userId: UserIdSchema, requestId: z.uuid(), pixels: z.coerce.number().int().min(1).max(COURSE_PIXEL_LIMIT), confirmed: z.literal("on") }).safeParse(Object.fromEntries(data));
   if (!parsed.success) return { error: "Укажите целое число пикселей и подтвердите внешнюю выдачу." };
   const { userId, requestId, pixels } = parsed.data;
   const coins = pixels * COINS_PER_PIXEL;

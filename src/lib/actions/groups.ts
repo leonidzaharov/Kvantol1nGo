@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { recordAdminAudit } from "@/lib/admin-audit";
 import { prisma } from "@/lib/db";
-import { IdSchema, parse, requireAdmin } from "@/lib/server-guard";
+import { IdSchema, UserIdSchema, parse, requireAdmin } from "@/lib/server-guard";
 import { deleteStudentRecords } from "@/lib/student-deletion";
 
 export type GroupFormState = { error: string } | null;
@@ -109,7 +109,7 @@ export async function deleteGroup(formData: FormData): Promise<void> {
 }
 
 const AssignSchema = z.object({
-  userId: z.uuid(),
+  userId: UserIdSchema,
   groupId: IdSchema.nullable(),
 });
 
