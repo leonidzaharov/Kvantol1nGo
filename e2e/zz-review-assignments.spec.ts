@@ -37,7 +37,11 @@ async function loginStudent(page: Page) {
 async function openSubmission(page: Page, assignmentId: number) {
   const href = await page.getByRole("link", { name: "Проверить" }).getAttribute("href");
   expect(href).toMatch(new RegExp(`^/admin/review-assignments/${assignmentId}/review/\\d+$`));
-  await page.goto(href!);
+  // E2E крутится на next dev: первый запрос к ещё не скомпилированному
+  // маршруту изредка отдаёт 404, пока Turbopack его собирает. Повторяем.
+  await expect
+    .poll(async () => (await page.goto(href!))?.status(), { timeout: 30_000 })
+    .toBe(200);
 }
 
 test("черновик → публикация → возврат → повторная отправка → принятие без наград", async ({
