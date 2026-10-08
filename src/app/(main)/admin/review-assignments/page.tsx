@@ -146,7 +146,7 @@ export default async function ReviewAssignmentsAdminPage() {
                       title={assignment.title}
                       status={assignment.status}
                       hasAudience={hasAudience}
-                      hasSubmissions={assignment._count.submissions > 0}
+                      submissionCount={assignment._count.submissions}
                     />
                   </div>
                 </li>

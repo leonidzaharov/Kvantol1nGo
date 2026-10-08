@@ -242,17 +242,17 @@ export async function deleteReviewAssignment(
     where: { id },
     select: {
       title: true,
-      status: true,
       _count: { select: { submissions: true } },
     },
   });
   if (!assignment) {
     return;
   }
-  if (assignment.status !== "DRAFT" || assignment._count.submissions > 0) {
-    throw new Error("Удалять можно только черновик без ответов.");
-  }
 
+  // Работу можно удалить в любом статусе: ответы, их версии и назначения
+  // уходят каскадом. Наград за работы нет — балансы учеников не меняются.
+  // Интерфейс заранее предупреждает, сколько ответов пропадёт.
+  const submissions = assignment._count.submissions;
   await prisma.$transaction(async (tx) => {
     await tx.reviewAssignment.delete({ where: { id } });
     await recordAdminAudit(tx, {
@@ -260,7 +260,10 @@ export async function deleteReviewAssignment(
       action: "deleted",
       entityType: "review_assignment",
       entityId: id,
-      entityLabel: assignment.title,
+      entityLabel:
+        submissions > 0
+          ? `${assignment.title} (ответов: ${submissions})`
+          : assignment.title,
     });
   });
   refreshReviewPages(id);

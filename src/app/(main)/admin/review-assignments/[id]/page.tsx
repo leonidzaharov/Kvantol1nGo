@@ -145,7 +145,6 @@ export default async function ReviewAssignmentOverviewPage({
   };
   const hasAudience =
     assignment.groupTargets.length + assignment.userTargets.length > 0;
-  const hasSubmissions = assignment.submissions.length > 0;
 
   return (
     <div className="px-3 pb-12">
@@ -194,7 +193,7 @@ export default async function ReviewAssignmentOverviewPage({
               title={assignment.title}
               status={assignment.status}
               hasAudience={hasAudience}
-              hasSubmissions={hasSubmissions}
+              submissionCount={assignment.submissions.length}
             />
           </div>
         </section>

@@ -13,4 +13,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Поток: push в `main` → CI → при успехе `production` = `main` → сервер забирает `production`.
 - Диагностика: `sudo systemctl status quantorium-deploy.service --no-pager -l`, `sudo journalctl -u quantorium-deploy.service -n 100 --no-pager`, `sudo journalctl -u quantorium.service -n 100 --no-pager`.
 - Полная перерегистрация учеников: `scripts/import-students.mjs` (без `--apply` только показывает план; с `--apply` делает pg_dump, удаляет всех не-админов и создаёт новых с пустыми `profileConfiguredAt`/`privacyAcceptedAt`). Запуск на сервере: `cd /opt/quantorium/current && sudo node /tmp/import-students.mjs /tmp/students.json --env=/etc/quantorium.env [--apply]`. ФИО в базу не пишем (политика `/privacy`): ник «Имя Ф», полные имена и PIN живут только на бумаге.
+- Ручную работу наставник может удалить в любом статусе: ответы учеников уходят каскадом, подтверждение показывает их число, в аудит пишется «название (ответов: N)».
+- После обновления сервера открытые вкладки админки отвечают 404 «Server action not found» на любые действия — это перекос сборок Next.js, лечится Ctrl+F5.
 - В рабочей базе есть наследные `User.id` не в формате UUID (например, `user-123`) — id пользователя проверять через `UserIdSchema` из `src/lib/server-guard.ts`, не через `z.uuid()`.

@@ -12,7 +12,7 @@ type AssignmentControlsProps = {
   title: string;
   status: ReviewAssignmentStatus;
   hasAudience: boolean;
-  hasSubmissions: boolean;
+  submissionCount: number;
 };
 
 function StatusForm({
@@ -53,8 +53,9 @@ export function AssignmentControls({
   title,
   status,
   hasAudience,
-  hasSubmissions,
+  submissionCount,
 }: AssignmentControlsProps) {
+  const hasSubmissions = submissionCount > 0;
   return (
     <div className="flex flex-wrap gap-2">
       {status === "DRAFT" ? (
@@ -69,21 +70,6 @@ export function AssignmentControls({
             <span className="self-center text-xs font-medium text-amber-700">
               Сначала выберите аудиторию
             </span>
-          ) : null}
-          {!hasSubmissions ? (
-            <form
-              action={deleteReviewAssignment}
-              onSubmit={(event) => {
-                if (!confirm(`Удалить черновик «${title}»?`)) {
-                  event.preventDefault();
-                }
-              }}
-            >
-              <input type="hidden" name="id" value={id} />
-              <Button type="submit" size="sm" variant="dangerOutline">
-                Удалить
-              </Button>
-            </form>
           ) : null}
         </>
       ) : null}
@@ -111,6 +97,22 @@ export function AssignmentControls({
       {status === "ARCHIVED" ? (
         <StatusForm id={id} status="PUBLISHED" label="Опубликовать снова" />
       ) : null}
+      <form
+        action={deleteReviewAssignment}
+        onSubmit={(event) => {
+          const question = hasSubmissions
+            ? `Удалить работу «${title}» вместе с ответами учеников (${submissionCount})? Это нельзя отменить.`
+            : `Удалить работу «${title}»?`;
+          if (!confirm(question)) {
+            event.preventDefault();
+          }
+        }}
+      >
+        <input type="hidden" name="id" value={id} />
+        <Button type="submit" size="sm" variant="dangerOutline">
+          Удалить
+        </Button>
+      </form>
     </div>
   );
 }
