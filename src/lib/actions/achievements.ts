@@ -7,13 +7,24 @@ import { z } from "zod";
 import { recordAdminAudit } from "@/lib/admin-audit";
 import { prisma } from "@/lib/db";
 import { awardManualAchievementInTransaction } from "@/lib/manual-achievement-award";
-import { IdSchema, parse, requireAdmin, requireUser } from "@/lib/server-guard";
+import {
+  IdSchema,
+  parse,
+  requireAdmin,
+  requireUser,
+  UserIdSchema,
+} from "@/lib/server-guard";
 
 export type AchievementFormState = { error: string } | null;
 
 const ManualAwardSchema = z.object({
   achievementId: z.coerce.number().pipe(IdSchema),
-  userId: z.string().trim().min(1).max(128),
+  userId: UserIdSchema,
+});
+
+const RevokeSchema = z.object({
+  achievementId: z.coerce.number().pipe(IdSchema),
+  userId: UserIdSchema,
 });
 
 const AchievementFieldsSchema = z.object({
@@ -221,6 +232,63 @@ export async function awardManualAchievement(
       result === "awarded" ? "success" : "already"
     }`,
   );
+}
+
+/**
+ * Забрать достижение у конкретного ученика — для ачивок, выданных
+ * по ошибке (вручную или из-за бага в движке). Удаляет и открытие, и
+ * частичный прогресс по ней, чистит витрину ученика. Уже выданные
+ * монеты остаются (тот же принцип, что у deleteAchievement).
+ */
+export async function revokeAchievement(formData: FormData): Promise<void> {
+  const actorId = await requireAdmin();
+
+  const { achievementId, userId } = parse(RevokeSchema, {
+    achievementId: formData.get("achievementId"),
+    userId: formData.get("userId"),
+  });
+
+  const revoked = await prisma.$transaction(async (tx) => {
+    const [achievement, student] = await Promise.all([
+      tx.achievement.findUnique({
+        where: { id: achievementId },
+        select: { title: true },
+      }),
+      tx.user.findFirst({
+        where: { id: userId, isAdmin: false },
+        select: { name: true, showcaseAchievementId: true },
+      }),
+    ]);
+    if (!achievement || !student) return false;
+
+    const { count } = await tx.userAchievement.deleteMany({
+      where: { userId, achievementId },
+    });
+    if (count === 0) return false;
+
+    if (student.showcaseAchievementId === achievementId) {
+      await tx.user.update({
+        where: { id: userId },
+        data: { showcaseAchievementId: null },
+      });
+    }
+
+    await recordAdminAudit(tx, {
+      actorId,
+      action: "revoked",
+      entityType: "achievement",
+      entityId: achievementId,
+      entityLabel: `${achievement.title} · ${student.name}`,
+    });
+    return true;
+  });
+  if (!revoked) {
+    throw new Error("BAD_REQUEST");
+  }
+
+  revalidateAchievementPages();
+  revalidatePath(`/admin/achievements/${achievementId}`);
+  redirect(`/admin/achievements/${achievementId}?revoked=success`);
 }
 
 export async function acknowledgeAchievementNotifications(

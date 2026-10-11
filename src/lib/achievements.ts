@@ -50,7 +50,6 @@ export async function advanceAchievements(
             select: {
               lessons: {
                 where: {
-                  isPublished: true,
                   OR: [
                     { groupRestrictions: { none: {} } },
                     { groupRestrictions: { some: { groupId } } },

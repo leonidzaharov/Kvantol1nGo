@@ -6,10 +6,11 @@ import { awardManualAchievement } from "@/lib/actions/achievements";
 import { requireAdminOr404 } from "@/lib/server-guard";
 
 import { AchievementForm } from "../achievement-form";
+import { RevokeButton } from "../revoke-button";
 
 type PageProps = {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ award?: string }>;
+  searchParams: Promise<{ award?: string; revoked?: string }>;
 };
 
 export default async function EditAchievementPage({
@@ -19,7 +20,7 @@ export default async function EditAchievementPage({
   await requireAdminOr404();
 
   const { id } = await params;
-  const { award } = await searchParams;
+  const { award, revoked } = await searchParams;
   const achievementId = Number.parseInt(id, 10);
   if (!Number.isFinite(achievementId) || achievementId <= 0) {
     notFound();
@@ -73,6 +74,21 @@ export default async function EditAchievementPage({
     (student) => !student.achievements[0]?.isUnlocked,
   );
   const awardedCount = students.length - availableStudents.length;
+
+  const unlockedStudents = await prisma.user.findMany({
+    where: {
+      isAdmin: false,
+      achievements: {
+        some: { achievementId: achievement.id, isUnlocked: true },
+      },
+    },
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      group: { select: { name: true } },
+    },
+  });
 
   return (
     <div className="px-3">
@@ -153,6 +169,52 @@ export default async function EditAchievementPage({
             <p className="mt-3 text-xs font-bold text-violet-500">
               Уже получили: {awardedCount} из {students.length}
             </p>
+          </section>
+        )}
+
+        {unlockedStudents.length > 0 && (
+          <section className="mt-8 rounded-2xl border-2 border-neutral-200 p-5">
+            <h2 className="text-lg font-bold text-neutral-700">
+              Открыли ачивку: {unlockedStudents.length}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              «Забрать» убирает ачивку и прогресс по ней у ученика —
+              для наград, выданных по ошибке. Монеты остаются.
+            </p>
+
+            {revoked === "success" && (
+              <p
+                className="mt-4 rounded-xl bg-green-100 px-3 py-2 text-sm font-bold text-green-700"
+                role="status"
+              >
+                Достижение отозвано.
+              </p>
+            )}
+
+            <ul className="mt-4 flex flex-col gap-y-2">
+              {unlockedStudents.map((student) => (
+                <li
+                  key={student.id}
+                  className="flex items-center gap-x-3 rounded-xl border border-neutral-200 px-3 py-2"
+                >
+                  <span className="min-w-0 flex-1 truncate text-sm font-bold text-neutral-700">
+                    {student.name}
+                    {student.group ? (
+                      <span className="font-medium text-neutral-400">
+                        {" "}
+                        · {student.group.name}
+                      </span>
+                    ) : null}
+                  </span>
+                  <RevokeButton
+                    achievementId={achievement.id}
+                    achievementTitle={achievement.title}
+                    userId={student.id}
+                    studentName={student.name}
+                  />
+                </li>
+              ))}
+            </ul>
           </section>
         )}
       </div>

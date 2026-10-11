@@ -101,6 +101,7 @@ enum AdminAuditAction {
   returned
   session_started
   session_ended
+  revoked
 }
 
 enum AdminAuditEntity {

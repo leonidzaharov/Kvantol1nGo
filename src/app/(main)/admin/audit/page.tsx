@@ -21,6 +21,7 @@ const ACTION_LABELS: Record<AdminAuditAction, string> = {
   returned: "Работа возвращена",
   session_started: "Занятие начато",
   session_ended: "Занятие завершено",
+  revoked: "Отозвано",
 };
 
 const ENTITY_LABELS: Record<AdminAuditEntity, string> = {
