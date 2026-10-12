@@ -1,9 +1,39 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  normalizeLessonImages,
   parseLessonContent,
   sanitizeLessonContent,
 } from "./lesson-content";
+
+describe("normalizeLessonImages", () => {
+  it("превращает HTML-картинку редактора в markdown без размеров", () => {
+    expect(
+      normalizeLessonImages(
+        'Текст\n<img height="100" width="148" src="/media/abc.webp" />\nЕщё',
+      ),
+    ).toBe("Текст\n![](/media/abc.webp)\nЕщё");
+  });
+
+  it("сохраняет alt и переносит одинарные кавычки", () => {
+    expect(
+      normalizeLessonImages("<img alt='Схема' src='/media/x.png'>"),
+    ).toBe("![Схема](/media/x.png)");
+  });
+
+  it("не трогает обычный markdown и выкидывает картинку без src", () => {
+    expect(normalizeLessonImages("![a](/media/a.png) и <img width=5>")).toBe(
+      "![a](/media/a.png) и ",
+    );
+  });
+
+  it("применяется при разборе контента из БД", () => {
+    const parsed = parseLessonContent(
+      JSON.stringify({ theory: '<img src="/media/q.webp">', questions: [] }),
+    );
+    expect(parsed.theory).toBe("![](/media/q.webp)");
+  });
+});
 
 describe("lesson content v3", () => {
   it("старый урок без bonusQuestions остаётся совместимым", () => {

@@ -165,9 +165,9 @@ export function ProfileSelector({ groups, ungrouped }: Props) {
               key={t}
               type="button"
               onClick={() => setTrack(t)}
-              className="rounded-xl border-2 border-b-4 p-6 text-center transition hover:bg-black/5 active:border-b-2"
+              className="flex min-h-[120px] flex-col items-center justify-center rounded-xl border-2 border-b-4 p-4 text-center transition hover:bg-black/5 active:border-b-2"
             >
-              <div className="text-xl font-extrabold text-neutral-700">
+              <div className="text-balance break-words text-xl font-extrabold leading-tight text-neutral-700">
                 {TRACK_LABELS[t]}
               </div>
               <div className="mt-1 text-xs font-bold text-neutral-400">
@@ -179,7 +179,7 @@ export function ProfileSelector({ groups, ungrouped }: Props) {
             <button
               type="button"
               onClick={() => setTrack("ungrouped")}
-              className="rounded-xl border-2 border-b-4 border-dashed p-6 text-center transition hover:bg-black/5 active:border-b-2"
+              className="flex min-h-[120px] flex-col items-center justify-center rounded-xl border-2 border-b-4 border-dashed p-4 text-center transition hover:bg-black/5 active:border-b-2"
             >
               <div className="text-xl font-extrabold text-neutral-500">
                 Без группы
@@ -198,12 +198,12 @@ export function ProfileSelector({ groups, ungrouped }: Props) {
               key={g.id}
               type="button"
               onClick={() => setGroupId(g.id)}
-              className="rounded-xl border-2 border-b-4 p-6 text-center transition hover:bg-black/5 active:border-b-2"
+              className="flex min-h-[120px] flex-col items-center justify-center rounded-xl border-2 border-b-4 p-4 text-center transition hover:bg-black/5 active:border-b-2"
             >
-              <div className="text-lg font-extrabold uppercase text-neutral-700">
+              <div className="text-balance break-words text-lg font-extrabold uppercase leading-tight text-neutral-700">
                 {g.name}
               </div>
-              <div className="mt-1 text-xs font-bold text-neutral-400">
+              <div className="mt-1.5 text-xs font-bold text-neutral-400">
                 {g.students.length} уч.
               </div>
             </button>

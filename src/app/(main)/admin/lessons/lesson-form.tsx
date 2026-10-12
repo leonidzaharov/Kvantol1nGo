@@ -780,7 +780,8 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
         </p>
       )}
 
-      <div className="mb-10 mt-2 flex items-center gap-x-3">
+      {/* Липкая панель: форма длинная, «Сохранить» должна быть под рукой при любом скролле. */}
+      <div className="sticky bottom-0 z-10 -mx-3 mb-6 mt-2 flex items-center gap-x-3 border-t-2 border-neutral-200 bg-white/95 px-3 py-3 backdrop-blur">
         <Button type="submit" variant="secondary" disabled={pending}>
           {pending ? "Сохраняю…" : "Сохранить"}
         </Button>

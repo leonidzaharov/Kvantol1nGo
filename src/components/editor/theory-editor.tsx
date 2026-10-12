@@ -113,8 +113,15 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
       <MDXEditor
         markdown={markdown}
         onChange={(value) => {
-          setParseError(null);
-          onChange(value);
+          // MDXEditor зовёт onChange прямо в первом коммите Lexical
+          // (нормализует стартовый markdown) - setState родителя в этот
+          // момент падает с "update on component that hasn't mounted".
+          // Откладываем на микротаск: коммит завершится, компонент
+          // смонтируется, значение останется тем же.
+          queueMicrotask(() => {
+            setParseError(null);
+            onChange(value);
+          });
         }}
         onError={({ error }) => setParseError(error)}
         contentEditableClassName={contentClass}

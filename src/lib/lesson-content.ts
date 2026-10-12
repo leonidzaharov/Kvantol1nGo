@@ -65,8 +65,26 @@ export const LessonQuestionSchema = z.union([
   ChoiceQuestionSchema,
 ]);
 
+/**
+ * Редактор теории при заданных размерах картинки сериализует её как HTML
+ * `<img width=… height=… src=…>`. Рендер ученика сырой HTML не вставляет
+ * (защита от XSS), и тег показывался текстом, а фиксированные размеры
+ * сплющивали картинку. Приводим к обычному `![alt](src)`: атрибуты
+ * выкидываются, картинка масштабируется по ширине контейнера.
+ */
+export function normalizeLessonImages(markdown: string): string {
+  return markdown.replace(/<img\b[^>]*>/gi, (tag) => {
+    const src = tag.match(/\bsrc\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const url = src?.[1] ?? src?.[2] ?? src?.[3];
+    if (!url || /^\s*javascript:/i.test(url)) return "";
+    const alt = tag.match(/\balt\s*=\s*(?:"([^"]*)"|'([^']*)')/i);
+    const altText = (alt?.[1] ?? alt?.[2] ?? "").replace(/[[\]]/g, "");
+    return `![${altText}](${url})`;
+  });
+}
+
 export const LessonContentSchema = z.object({
-  theory: z.string().max(50000).default(""),
+  theory: z.string().max(50000).default("").transform(normalizeLessonImages),
   questions: z.array(LessonQuestionSchema).max(50).default([]),
   bonusQuestions: z.array(LessonQuestionSchema).max(20).default([]),
 });
