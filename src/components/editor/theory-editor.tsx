@@ -4,8 +4,10 @@ import "@mdxeditor/editor/style.css";
 
 import { useState } from "react";
 import {
+  AdmonitionDirectiveDescriptor,
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
+  ChangeAdmonitionType,
   ChangeCodeMirrorLanguage,
   codeBlockPlugin,
   codeMirrorPlugin,
@@ -13,8 +15,11 @@ import {
   CreateLink,
   diffSourcePlugin,
   DiffSourceToggleWrapper,
+  directivesPlugin,
   headingsPlugin,
+  HighlightToggle,
   imagePlugin,
+  InsertAdmonition,
   InsertCodeBlock,
   InsertImage,
   InsertThematicBreak,
@@ -95,6 +100,7 @@ const contentClass =
   "[&_ul]:list-disc [&_ul]:pl-6 [&_ol]:list-decimal [&_ol]:pl-6 " +
   "[&_blockquote]:border-l-4 [&_blockquote]:border-green-300 [&_blockquote]:bg-green-50 [&_blockquote]:px-4 [&_blockquote]:py-2 " +
   "[&_a]:font-bold [&_a]:text-sky-500 [&_a]:underline " +
+  "[&_mark]:rounded [&_mark]:bg-amber-200 [&_mark]:px-1 [&_mark]:font-bold " +
   "[&_img]:max-w-full [&_img]:rounded-xl";
 
 type TheoryEditorProps = {
@@ -135,6 +141,12 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
           linkDialogPlugin(),
           imagePlugin({ imageUploadHandler: uploadImage }),
           codeBlockPlugin({ defaultCodeBlockLanguage: "python" }),
+          // Цветные рамки вставляются кнопкой тулбара и рисуются прямо
+          // в визуальном режиме. В markdown уходят как `:::info`/`:::note`/
+          // `:::caution`, а <Markdown> у ученика превращает их в callout.
+          directivesPlugin({
+            directiveDescriptors: [AdmonitionDirectiveDescriptor],
+          }),
           codeMirrorPlugin({
             codeBlockLanguages: {
               python: "Python",
@@ -161,12 +173,15 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
                           <BoldItalicUnderlineToggles
                             options={["Bold", "Italic"]}
                           />
+                          <HighlightToggle />
                           <BlockTypeSelect />
                           <ListsToggle options={["bullet", "number"]} />
                           <CreateLink />
                           <InsertImage />
                           <InsertCodeBlock />
                           <InsertThematicBreak />
+                          <InsertAdmonition />
+                          <ChangeAdmonitionType />
                         </>
                       ),
                     },

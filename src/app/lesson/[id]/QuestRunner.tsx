@@ -273,6 +273,33 @@ export function QuestRunner({
     setSelectedOption(index);
   };
 
+  // После последнего основного задания предлагаем звёздочки ДО завершения:
+  // так ученик видит вызов, пока урок ещё не закрыт. Отказ запоминаем,
+  // чтобы не спрашивать повторно в этой сессии.
+  const [bonusOffer, setBonusOffer] = useState(false);
+  const bonusTried = useRef(false);
+
+  const offerBonusOrFinish = () => {
+    if (bonusQuestions.length > 0 && !bonusTried.current) {
+      setBonusOffer(true);
+    } else {
+      finalize();
+    }
+  };
+
+  const startBonus = () => {
+    bonusTried.current = true;
+    setBonusOffer(false);
+    setPhase("bonus");
+    setActiveIndex(0);
+    setCompletedCount(0);
+    setSelectedOption(undefined);
+    setTextAnswer("");
+    setCooldownSeconds(0);
+    setStatus("none");
+    setCodeOutput(null);
+  };
+
   const finalize = () => {
     if (previewMode) {
       setResult({
@@ -311,7 +338,7 @@ export function QuestRunner({
   // синхронно нельзя (react-hooks/set-state-in-effect).
   useEffect(() => {
     if (!resume?.finishImmediately || previewMode || result !== null) return;
-    const timer = window.setTimeout(finalize, 0);
+    const timer = window.setTimeout(offerBonusOrFinish, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -354,7 +381,7 @@ export function QuestRunner({
           setBonusFinished(true);
           fireConfetti();
         } else {
-          finalize();
+          offerBonusOrFinish();
         }
       } else {
         setActiveIndex((i) => i + 1);
@@ -472,7 +499,7 @@ export function QuestRunner({
     persistTheoryStep(theoryTotal);
     // Урок без заданий завершается сразу после последнего шага теории.
     if (coreTotal === 0) {
-      finalize();
+      offerBonusOrFinish();
     } else {
       setPhase("tasks");
     }
@@ -489,34 +516,8 @@ export function QuestRunner({
     </div>
   ) : null;
 
-  // ── Экран результата дополнительных заданий ──
-  if (bonusFinished) {
-    return (
-      <>
-        <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-y-5 px-6 text-center">
-          <div className="text-6xl lg:text-7xl">⭐</div>
-          <h1 className="text-xl font-bold text-neutral-700 lg:text-3xl">
-            Все задания со звёздочкой решены!
-          </h1>
-          <p className="text-neutral-500">
-            Основная часть урока уже была завершена. Дополнительные задания не
-            изменяли её награду.
-          </p>
-        </div>
-        <Footer
-          status="completed"
-          onCheck={() => {
-            window.location.href = previewMode
-              ? `/admin/lessons/${lessonId}`
-              : "/learn";
-          }}
-        />
-      </>
-    );
-  }
-
-  // ── Экран результата основной части ──
-  if (result && phase !== "bonus") {
+  // ── Экран результата урока ──
+  if (result) {
     return (
       <>
         <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-y-4 px-6 text-center lg:gap-y-8">
@@ -543,26 +544,6 @@ export function QuestRunner({
               Новый уровень {result.level}! 🚀
             </p>
           )}
-
-          {bonusQuestions.length > 0 && (
-            <Button
-              type="button"
-              variant="secondaryOutline"
-              size="lg"
-              onClick={() => {
-                setPhase("bonus");
-                setActiveIndex(0);
-                setCompletedCount(0);
-                setSelectedOption(undefined);
-                setTextAnswer("");
-                setCooldownSeconds(0);
-                setStatus("none");
-                setCodeOutput(null);
-              }}
-            >
-              ⭐ Перейти к заданиям со звёздочкой
-            </Button>
-          )}
         </div>
 
         <Footer
@@ -575,6 +556,66 @@ export function QuestRunner({
         />
 
         <AchievementToastStack achievements={toasts} onDismiss={dismissToast} />
+      </>
+    );
+  }
+
+  // ── Экран «со звёздочкой решены» → дальше финализация урока ──
+  if (bonusFinished) {
+    return (
+      <>
+        <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-y-5 px-6 text-center">
+          <div className="text-6xl lg:text-7xl">⭐</div>
+          <h1 className="text-xl font-bold text-neutral-700 lg:text-3xl">
+            Все задания со звёздочкой решены!
+          </h1>
+          <p className="text-neutral-500">
+            Молодец: ты справился с самым сложным. Сейчас покажу результат
+            урока.
+          </p>
+        </div>
+        <Footer
+          status="completed"
+          disabled={isPending}
+          onCheck={finalize}
+        />
+      </>
+    );
+  }
+
+  // ── Предложение заданий со звёздочкой перед завершением ──
+  if (bonusOffer) {
+    return (
+      <>
+        <div className="mx-auto flex h-full max-w-lg flex-col items-center justify-center gap-y-5 px-6 text-center">
+          <div className="text-6xl lg:text-7xl">⭐</div>
+          <h1 className="text-xl font-bold text-neutral-700 lg:text-3xl">
+            Хочешь решить сложную задачу?
+          </h1>
+          <p className="text-neutral-500">
+            Остались задания со звёздочкой ({bonusQuestions.length}) - они
+            посложнее обычных, но на награду за урок не влияют.
+          </p>
+          <div className="flex w-full flex-col gap-y-3 sm:flex-row sm:justify-center sm:gap-x-3">
+            <Button
+              type="button"
+              variant="secondary"
+              size="lg"
+              onClick={startBonus}
+            >
+              Да, давай!
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="lg"
+              disabled={isPending}
+              onClick={finalize}
+            >
+              Завершить урок
+            </Button>
+          </div>
+        </div>
       </>
     );
   }
@@ -639,7 +680,7 @@ export function QuestRunner({
             variant="secondary"
             size="lg"
             onClick={() => {
-              finalize();
+              offerBonusOrFinish();
             }}
           >
             Завершить основную часть

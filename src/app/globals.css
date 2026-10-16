@@ -191,6 +191,54 @@ html[data-theme="dark"] .lesson-markdown-code-block code {
   color: #f1f5f9;
 }
 
+/* Жёлтый маркер `==текст==` и callout-панели в теории урока:
+   важно - жёлтая лампочка, инфо - зелёная панель. */
+.lesson-highlight {
+  background-color: #fde68a;
+  color: #3f2d00;
+}
+
+html[data-theme="dark"] .lesson-highlight {
+  background-color: #b45309;
+  color: #fffbeb;
+}
+
+html[data-theme="dark"] .lesson-callout-important {
+  border-color: #b45309;
+  background-color: rgb(180 83 9 / 0.18);
+  color: #fef3c7;
+}
+
+html[data-theme="dark"] .lesson-callout-important p {
+  color: #fef3c7;
+}
+
+html[data-theme="dark"] .lesson-callout-info {
+  border-color: #16a34a;
+  background-color: rgb(22 163 74 / 0.16);
+  color: #d1fae5;
+}
+
+html[data-theme="dark"] .lesson-callout-info p {
+  color: #d1fae5;
+}
+
+/* Рамки-admonition в визуальном редакторе теории красим в те же
+   два цвета, что увидит ученик: info/note/tip - зелёные,
+   caution/danger - жёлтые. Переопределяем переменные темы MDXEditor. */
+.mdxeditor {
+  --admonitionInfoBg: #f0fdf4;
+  --admonitionInfoBorder: #86efac;
+  --admonitionNoteBg: #f0fdf4;
+  --admonitionNoteBorder: #86efac;
+  --admonitionTipBg: #f0fdf4;
+  --admonitionTipBorder: #86efac;
+  --admonitionCautionBg: #fffbeb;
+  --admonitionCautionBorder: #fcd34d;
+  --admonitionDangerBg: #fffbeb;
+  --admonitionDangerBorder: #fcd34d;
+}
+
 html[data-theme="dark"] .hover\:bg-black\/5:hover {
   background-color: rgb(255 255 255 / 0.06);
 }

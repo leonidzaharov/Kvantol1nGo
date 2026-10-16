@@ -3,13 +3,15 @@
 import { useActionState, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Play, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Play, Plus, Trash2, Upload } from "lucide-react";
+import { z } from "zod";
 
 import { saveLesson, type LessonFormState } from "@/lib/actions/lessons";
 import { TRACK_LABELS, TRACK_ORDER } from "@/lib/groups";
 import type { GroupTrack } from "@/generated/prisma";
 import {
   CODE_LANGUAGES,
+  LessonQuestionSchema,
   type CodeLanguage,
   type LessonContent,
 } from "@/lib/lesson-content";
@@ -316,6 +318,67 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
       update(key, { expectedOutput: res.output });
       done("Готово: «Ожидаемый вывод» заполнен из вывода решения.", false);
     });
+  };
+
+  // ── Импорт заданий из JSON-файла ──
+  // Принимает два формата:
+  //   [{...задание...}]                                   - все в основные;
+  //   { questions: [...], bonusQuestions: [...] }         - по своим секциям.
+  // Каждое задание проверяется той же схемой, что и сохранение урока,
+  // поэтому битый файл не сможет уронить форму: покажет подсказку.
+  const [importNote, setImportNote] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
+
+  const importQuestions = async (file: File) => {
+    setImportNote(null);
+    try {
+      const raw: unknown = JSON.parse(await file.text());
+      const asObject = raw as {
+        questions?: unknown;
+        bonusQuestions?: unknown;
+      };
+      const coreRaw = Array.isArray(raw) ? raw : (asObject.questions ?? []);
+      const bonusRaw = Array.isArray(raw)
+        ? []
+        : (asObject.bonusQuestions ?? []);
+      const core = z.array(LessonQuestionSchema).safeParse(coreRaw);
+      const bonus = z.array(LessonQuestionSchema).safeParse(bonusRaw);
+      if (
+        !core.success ||
+        !bonus.success ||
+        (core.data.length === 0 && bonus.data.length === 0)
+      ) {
+        setImportNote(
+          "Формат не подошёл. Жду массив заданий или объект с полями questions и bonusQuestions.",
+        );
+        return;
+      }
+      const imported = fromContent({
+        theory: "",
+        questions: core.data,
+        bonusQuestions: bonus.data,
+      });
+      const importedCore = imported.filter((q) => !q.bonus);
+      const importedBonus = imported.filter((q) => q.bonus);
+      setQuestions((prev) => [
+        ...prev.filter((q) => !q.bonus),
+        ...importedCore,
+        ...prev.filter((q) => q.bonus),
+        ...importedBonus,
+      ]);
+      setImportNote(
+        `Импортировано: ${importedCore.length} основных` +
+          (importedBonus.length > 0
+            ? ` и ${importedBonus.length} со звёздочкой`
+            : "") +
+          ".",
+      );
+    } catch {
+      setImportNote("Не удалось прочитать файл - это точно JSON?");
+    } finally {
+      // Сбрасываем input, чтобы повторный выбор того же файла сработал.
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
   };
 
   const coreCount = questions.filter((q) => !q.bonus).length;
@@ -772,7 +835,31 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
         >
           ⭐ Дополнительный код
         </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => importInputRef.current?.click()}
+        >
+          <Upload className="mr-2 h-4 w-4" />
+          Импорт заданий (JSON)
+        </Button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importQuestions(file);
+          }}
+        />
       </div>
+
+      {importNote && (
+        <p className="rounded-xl bg-sky-50 p-3 text-sm font-medium text-sky-700">
+          {importNote}
+        </p>
+      )}
 
       {state?.error && (
         <p className="rounded-xl bg-rose-50 p-3 font-medium text-rose-600">
