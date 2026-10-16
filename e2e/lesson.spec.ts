@@ -57,6 +57,11 @@ async function completeLesson(page: Page, opts?: { training?: boolean }) {
   await expect(page.getByText("Отлично!")).toBeVisible({ timeout: 15_000 });
   await page.getByRole("button", { name: "Далее" }).click();
 
+  // У фикстуры есть задания со звёздочкой — урок сначала предлагает их,
+  // здесь отказываемся и завершаем без бонуса.
+  await expect(page.getByText("Хочешь решить сложную задачу?")).toBeVisible();
+  await page.getByRole("button", { name: "Завершить урок" }).click();
+
   await expect(page.getByText("Урок пройден.")).toBeVisible({ timeout: 30_000 });
 }
 

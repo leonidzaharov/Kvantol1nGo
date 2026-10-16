@@ -103,16 +103,18 @@ test("дашборд подхватывает ученика и ошибки, с
   await studentPage.getByRole("button", { name: "4", exact: true }).click();
   await studentPage.getByRole("button", { name: "Проверить" }).click();
   await studentPage.getByRole("button", { name: "Далее" }).click();
-  await expect(studentPage.getByText("Урок пройден.")).toBeVisible({
-    timeout: 30_000,
-  });
+
+  // Основная часть решена: урок предлагает звёздочки ДО завершения,
+  // а на дашборде ученик уже «Основная часть готова» (completedAt
+  // записан серверной проверкой последнего ответа).
+  await expect(
+    studentPage.getByText("Хочешь решить сложную задачу?"),
+  ).toBeVisible();
   await expect(studentRow).toContainText("Основная часть готова", {
     timeout: 15_000,
   });
 
-  await studentPage
-    .getByRole("button", { name: "Перейти к заданиям со звёздочкой" })
-    .click();
+  await studentPage.getByRole("button", { name: "Да, давай!" }).click();
   await studentPage.getByRole("button", { name: "42", exact: true }).click();
   await studentPage.getByRole("button", { name: "Проверить" }).click();
   await studentPage.getByRole("button", { name: "Далее" }).click();
@@ -121,6 +123,12 @@ test("дашборд подхватывает ученика и ошибки, с
   ).toBeVisible();
   await expect(studentRow).toContainText("Всё готово", {
     timeout: 15_000,
+  });
+
+  // После бонуса урок финализируется по кнопке футера.
+  await studentPage.getByRole("button", { name: "Продолжить" }).click();
+  await expect(studentPage.getByText("Урок пройден.")).toBeVisible({
+    timeout: 30_000,
   });
 
   await adminContext.close();
