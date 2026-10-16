@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // Отрисовка markdown-теории урока в стиле проекта. Tailwind сбрасывает
 // дефолтные стили тегов, поэтому каждому элементу задаём вид явно.
@@ -197,12 +198,37 @@ const components: React.ComponentProps<typeof ReactMarkdown>["components"] = {
     />
   ),
   hr: () => <hr className="my-4 border-t-2 border-neutral-200" />,
+  // Таблицы из справочной теории: горизонтальный скролл на узких экранах,
+  // шапка на цветной подложке, строки разделены линиями.
+  table: (props) => (
+    <div className="overflow-x-auto rounded-xl border-2 border-neutral-200">
+      <table
+        className="w-full border-collapse text-sm text-neutral-700 lg:text-base"
+        {...props}
+      />
+    </div>
+  ),
+  thead: (props) => <thead className="bg-sky-50" {...props} />,
+  th: (props) => (
+    <th
+      className="border-b-2 border-neutral-200 px-3 py-2 text-left font-bold"
+      {...props}
+    />
+  ),
+  td: ({ children, ...props }) => (
+    <td
+      className="border-b border-neutral-100 px-3 py-2 align-top"
+      {...props}
+    >
+      {highlightChildren(children)}
+    </td>
+  ),
 };
 
 export function Markdown({ children }: { children: string }) {
   return (
     <div className="flex flex-col gap-y-4">
-      <ReactMarkdown components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {directivesToCallouts(children)}
       </ReactMarkdown>
     </div>

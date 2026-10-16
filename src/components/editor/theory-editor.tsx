@@ -22,6 +22,7 @@ import {
   InsertAdmonition,
   InsertCodeBlock,
   InsertImage,
+  InsertTable,
   InsertThematicBreak,
   linkDialogPlugin,
   linkPlugin,
@@ -30,6 +31,7 @@ import {
   markdownShortcutPlugin,
   MDXEditor,
   quotePlugin,
+  tablePlugin,
   thematicBreakPlugin,
   toolbarPlugin,
   UndoRedo,
@@ -147,6 +149,9 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
           directivesPlugin({
             directiveDescriptors: [AdmonitionDirectiveDescriptor],
           }),
+          // GFM-таблицы из справочников: без плагина редактор показал бы
+          // их сырым текстом и при сохранении потерял разметку.
+          tablePlugin(),
           codeMirrorPlugin({
             codeBlockLanguages: {
               python: "Python",
@@ -182,6 +187,7 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
                           <InsertThematicBreak />
                           <InsertAdmonition />
                           <ChangeAdmonitionType />
+                          <InsertTable />
                         </>
                       ),
                     },
