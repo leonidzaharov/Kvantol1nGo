@@ -4,6 +4,7 @@ import "@mdxeditor/editor/style.css";
 
 import { useState } from "react";
 import {
+  $isDirectiveNode,
   AdmonitionDirectiveDescriptor,
   BlockTypeSelect,
   BoldItalicUnderlineToggles,
@@ -35,6 +36,7 @@ import {
   thematicBreakPlugin,
   toolbarPlugin,
   UndoRedo,
+  type EditorInFocus,
 } from "@mdxeditor/editor";
 
 // ============================================================
@@ -104,6 +106,15 @@ const contentClass =
   "[&_a]:font-bold [&_a]:text-sky-500 [&_a]:underline " +
   "[&_mark]:rounded [&_mark]:bg-amber-200 [&_mark]:px-1 [&_mark]:font-bold " +
   "[&_img]:max-w-full [&_img]:rounded-xl";
+
+// Селектор типа рамки показываем только когда курсор внутри admonition:
+// безусловный <ChangeAdmonitionType> читает editorInFocus.rootNode и
+// падает с "rootNode of null", когда фокус вне рамки (обычный текст).
+const ADMONITION_NAMES = new Set(["note", "tip", "danger", "info", "caution"]);
+function whenInAdmonition(editor: EditorInFocus | null): boolean {
+  const node = editor?.rootNode;
+  return $isDirectiveNode(node) && ADMONITION_NAMES.has(node.getMdastNode().name);
+}
 
 type TheoryEditorProps = {
   /** Стартовый markdown (читается один раз при монтировании). */
@@ -179,14 +190,21 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
                             options={["Bold", "Italic"]}
                           />
                           <HighlightToggle />
-                          <BlockTypeSelect />
+                          <ConditionalContents
+                            options={[
+                              {
+                                when: whenInAdmonition,
+                                contents: () => <ChangeAdmonitionType />,
+                              },
+                              { fallback: () => <BlockTypeSelect /> },
+                            ]}
+                          />
                           <ListsToggle options={["bullet", "number"]} />
                           <CreateLink />
                           <InsertImage />
                           <InsertCodeBlock />
                           <InsertThematicBreak />
                           <InsertAdmonition />
-                          <ChangeAdmonitionType />
                           <InsertTable />
                         </>
                       ),
