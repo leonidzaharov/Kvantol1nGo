@@ -2,7 +2,7 @@
 
 import "@mdxeditor/editor/style.css";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   $isDirectiveNode,
   AdmonitionDirectiveDescriptor,
@@ -37,7 +37,10 @@ import {
   toolbarPlugin,
   UndoRedo,
   type EditorInFocus,
+  type MDXEditorMethods,
 } from "@mdxeditor/editor";
+
+import { normalizeTheoryHtml } from "@/lib/lesson-content";
 
 // ============================================================
 // Визуальный (WYSIWYG) редактор теории урока поверх MDXEditor.
@@ -126,10 +129,12 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
   // Ошибка парсинга не роняет форму: показываем подсказку, правится в
   // режиме источника (кнопка </> в тулбаре).
   const [parseError, setParseError] = useState<string | null>(null);
+  const editorRef = useRef<MDXEditorMethods>(null);
 
   return (
     <div className="rounded-xl border-2 border-neutral-200 focus-within:border-sky-300">
       <MDXEditor
+        ref={editorRef}
         markdown={markdown}
         onChange={(value) => {
           // MDXEditor зовёт onChange прямо в первом коммите Lexical
@@ -142,7 +147,21 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
             onChange(value);
           });
         }}
-        onError={({ error }) => setParseError(error)}
+        onError={({ error, source }) => {
+          // Гайд, вставленный из DOCX/HTML-экспорта, содержит сырой HTML
+          // (<figure><img>…</figure>, <div class="fact">), который парсер
+          // JSX не принимает. Переводим его в наш markdown и перечитываем;
+          // подсказку показываем, только если и это не помогло.
+          const normalized = normalizeTheoryHtml(source);
+          if (normalized !== source) {
+            queueMicrotask(() => {
+              editorRef.current?.setMarkdown(normalized);
+              onChange(normalized);
+            });
+            return;
+          }
+          setParseError(error);
+        }}
         contentEditableClassName={contentClass}
         placeholder="Расскажи тему урока: текст, картинки, примеры кода…"
         plugins={[

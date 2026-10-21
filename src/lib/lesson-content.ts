@@ -59,11 +59,21 @@ export const TextQuestionSchema = z.object({
 });
 
 // Типы с обязательным литералом type идут первыми. Старый формат без type = choice.
-export const LessonQuestionSchema = z.union([
-  CodeQuestionSchema,
-  TextQuestionSchema,
-  ChoiceQuestionSchema,
-]);
+// Внешние генераторы заданий часто называют текст вопроса `question` или
+// `text` — принимаем их как синонимы `prompt`, чтобы импорт JSON не падал.
+export const LessonQuestionSchema = z.preprocess((raw) => {
+  if (raw && typeof raw === "object" && !("prompt" in raw)) {
+    const q = raw as Record<string, unknown>;
+    const alias = q.question ?? q.text;
+    if (typeof alias === "string") {
+      const rest = Object.fromEntries(
+        Object.entries(q).filter(([key]) => key !== "question" && key !== "text"),
+      );
+      return { ...rest, prompt: alias };
+    }
+  }
+  return raw;
+}, z.union([CodeQuestionSchema, TextQuestionSchema, ChoiceQuestionSchema]));
 
 /**
  * Редактор теории при заданных размерах картинки сериализует её как HTML
@@ -83,8 +93,68 @@ export function normalizeLessonImages(markdown: string): string {
   });
 }
 
+/**
+ * Гайды, экспортированные из DOCX/HTML, приходят с сырым HTML: галереи
+ * `<div class="shots"><figure><img><figcaption>…`, жёлтые факты
+ * `<div class="fact"><h2>…</h2><p><mark>…</mark></p></div>`, `<mark>`, `<br>`.
+ * Визуальный редактор читает такой текст как JSX и падает на незакрытом
+ * `<img>`, а рендер ученика сырой HTML вообще не вставляет. Переводим всё
+ * в наш markdown: картинки → `![alt](src)`, факт → callout `> [!важно]`,
+ * `<mark>` → `==подсветка==`, остальные теги снимаем. Код-блоки и `inline`
+ * не трогаем — в них HTML может быть учебным примером.
+ */
+export function normalizeTheoryHtml(markdown: string): string {
+  const protectedChunks: string[] = [];
+  const protect = (chunk: string) =>
+    `\u0000${protectedChunks.push(chunk) - 1}\u0000`;
+  let text = markdown
+    .replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, protect)
+    .replace(/`[^`\n]+`/g, protect);
+
+  if (/<[a-z]/i.test(text)) {
+    const inline = (html: string) =>
+      html
+        .replace(/<mark\b[^>]*>([\s\S]*?)<\/mark>/gi, "==$1==")
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/<\/p>/gi, "\n\n")
+        .replace(/<\/?[a-z][a-z0-9-]*\b[^>]*>/gi, "")
+        .trim();
+
+    text = text
+      .replace(
+        /<div\b[^>]*class\s*=\s*["'][^"']*\bfact\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/gi,
+        (_all, inner: string) => {
+          const heading = /<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i.exec(inner);
+          const title = heading
+            ? inline(heading[1] ?? "").replace(/^(?:🟨|\s)+/u, "")
+            : "";
+          const body = inline(inner.replace(heading?.[0] ?? "", ""));
+          const head = title ? ` **${title}**` : "";
+          return `\n\n${[`[!важно]${head}`, ...(body ? ["", body] : [])]
+            .join("\n")
+            .split("\n")
+            .map((line) => (line.trim() === "" ? ">" : `> ${line}`))
+            .join("\n")}\n\n`;
+        },
+      )
+      .replace(/<figure\b[^>]*>([\s\S]*?)<\/figure>/gi, (_all, inner: string) => {
+        const img = /<img\b[^>]*>/i.exec(inner);
+        return img ? `\n\n${normalizeLessonImages(img[0])}\n\n` : "";
+      })
+      .replace(/<img\b[^>]*>/gi, (tag) => `\n\n${normalizeLessonImages(tag)}\n\n`)
+      .replace(/<\/?div\b[^>]*>/gi, "\n\n");
+    text = inline(text).replace(/\n{3,}/g, "\n\n");
+  }
+
+  return text.replace(/\u0000(\d+)\u0000/g, (_all, i: string) => protectedChunks[Number(i)] ?? "");
+}
+
 export const LessonContentSchema = z.object({
-  theory: z.string().max(50000).default("").transform(normalizeLessonImages),
+  theory: z
+    .string()
+    .max(50000)
+    .default("")
+    .transform((theory) => normalizeLessonImages(normalizeTheoryHtml(theory))),
   questions: z.array(LessonQuestionSchema).max(50).default([]),
   bonusQuestions: z.array(LessonQuestionSchema).max(20).default([]),
 });

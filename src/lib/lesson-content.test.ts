@@ -2,9 +2,52 @@ import { describe, expect, it } from "vitest";
 
 import {
   normalizeLessonImages,
+  normalizeTheoryHtml,
   parseLessonContent,
   sanitizeLessonContent,
 } from "./lesson-content";
+
+describe("normalizeTheoryHtml", () => {
+  it("раскрывает figure/figcaption в картинку с подписью", () => {
+    const html =
+      '<div class="shots">\n' +
+      '<figure><img src="assets/image1.jpeg" alt="Скриншот: image1.jpeg" loading="lazy"><figcaption>image1.jpeg</figcaption></figure>\n' +
+      '<figure><img src="assets/image2.png" alt="Скриншот: image2.png" loading="lazy"><figcaption>image2.png</figcaption></figure>\n' +
+      "</div>";
+    expect(normalizeTheoryHtml(html)).toBe(
+      "![Скриншот: image1.jpeg](assets/image1.jpeg)\n\n![Скриншот: image2.png](assets/image2.png)",
+    );
+  });
+
+  it("превращает блок факта с заголовком и mark в жёлтый callout", () => {
+    const html =
+      '<div class="fact"><h2>🟨 🌍 Сцена 480 × 360.</h2><p><mark>Фон и костюм — разные вещи.</mark></p></div>';
+    expect(normalizeTheoryHtml(html)).toBe(
+      "> [!важно] **🌍 Сцена 480 × 360.**\n>\n> ==Фон и костюм — разные вещи.==",
+    );
+  });
+
+  it("инлайновый mark становится ==подсветкой==, остальные теги снимаются", () => {
+    expect(
+      normalizeTheoryHtml("<mark>**Цель**</mark> и <span>текст</span><br>дальше"),
+    ).toBe("==**Цель**== и текст\nдальше");
+  });
+
+  it("не трогает чистый markdown и код", () => {
+    const md = "# Заголовок\n\n```html\n<div class=\"x\"><img src=\"a.png\"></div>\n```\n\nТекст `<b>` готов.";
+    expect(normalizeTheoryHtml(md)).toBe(md);
+  });
+
+  it("применяется при разборе контента из БД вместе с картинками", () => {
+    const parsed = parseLessonContent(
+      JSON.stringify({
+        theory: '<figure><img src="/media/q.webp"><figcaption>q</figcaption></figure>',
+        questions: [],
+      }),
+    );
+    expect(parsed.theory).toBe("![](/media/q.webp)");
+  });
+});
 
 describe("normalizeLessonImages", () => {
   it("превращает HTML-картинку редактора в markdown без размеров", () => {
@@ -36,6 +79,23 @@ describe("normalizeLessonImages", () => {
 });
 
 describe("lesson content v3", () => {
+  it("поле question из внешнего JSON принимается как prompt", () => {
+    const parsed = parseLessonContent(
+      JSON.stringify({
+        questions: [
+          {
+            type: "choice",
+            question: "Для чего нужен фон?",
+            options: ["Место действия", "Звук"],
+            correctIndex: 0,
+          },
+        ],
+      }),
+    );
+    expect(parsed.questions[0]?.prompt).toBe("Для чего нужен фон?");
+    expect(parsed.questions[0]).not.toHaveProperty("question");
+  });
+
   it("старый урок без bonusQuestions остаётся совместимым", () => {
     const parsed = parseLessonContent(
       JSON.stringify({
