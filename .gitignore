@@ -79,3 +79,8 @@ lectures/
 
 # Локальные загрузки в dev (на сервере — /var/lib/quantorium/uploads).
 /uploads/
+
+# Готовые уроки и иллюстрации храним вне репозитория приложения.
+/docs/lessons/
+/public/lessons/python/
+/lesson-materials/
