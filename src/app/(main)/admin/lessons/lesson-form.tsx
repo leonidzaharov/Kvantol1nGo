@@ -3,7 +3,7 @@
 import { useActionState, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowDown, ArrowUp, Play, Plus, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, FolderInput, Play, Plus, Trash2, Upload } from "lucide-react";
 import { z } from "zod";
 
 import { saveLesson, type LessonFormState } from "@/lib/actions/lessons";
@@ -17,6 +17,11 @@ import {
 } from "@/lib/lesson-content";
 import { LANGUAGE_LABELS, runCode } from "@/lib/code-runner";
 import { Button } from "@/components/ui/button";
+import { uploadImageFile } from "@/lib/image-upload";
+import {
+  importTheoryFolder,
+  type TheoryImportProgress,
+} from "@/lib/lesson-import";
 
 // WYSIWYG-редактор построен на Lexical и работает только в браузере,
 // поэтому грузим его без SSR (см. комментарий в theory-editor.tsx).
@@ -381,6 +386,44 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
     }
   };
 
+  // ── Импорт теории из папки комплекта ──
+  // Наставник выбирает папку с .md-гайдом и картинками. Браузер читает
+  // markdown, грузит все картинки с относительными путями через обычный
+  // upload и подменяет ссылки на /media/<имя>. Повторный импорт урока,
+  // который уже собран (/media-ссылки в тексте), файлы не грузит заново.
+  const [theoryKey, setTheoryKey] = useState(0);
+  const [theoryImport, setTheoryImport] = useState<TheoryImportProgress | null>(null);
+  const [theoryImporting, setTheoryImporting] = useState(false);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const importFolder = async (files: File[]) => {
+    if (theoryImporting) return;
+    setTheoryImporting(true);
+    setTheoryImport(null);
+    try {
+      const result = await importTheoryFolder(files, uploadImageFile, setTheoryImport);
+      setTheory(result.markdown);
+      setTheoryKey((k) => k + 1);
+      setTheoryImport({
+        done: result.done,
+        total: result.total,
+        note:
+          `Загружено ${result.done} из ${result.total} картинок.` +
+          (result.missing.length > 0
+            ? ` Не удалось загрузить: ${result.missing.join(", ")}`
+            : ""),
+      });
+    } catch (error) {
+      setTheoryImport({
+        done: 0,
+        total: 0,
+        note: error instanceof Error ? error.message : "Не удалось импортировать папку",
+      });
+    } finally {
+      setTheoryImporting(false);
+    }
+  };
+
   const coreCount = questions.filter((q) => !q.bonus).length;
   const bonusCount = questions.length - coreCount;
   const canMove = (index: number, dir: -1 | 1) => {
@@ -394,7 +437,11 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
   };
 
   return (
-    <form action={formAction} className="flex w-full flex-col gap-y-4">
+    <form
+      action={formAction}
+      onSubmit={(event) => { if (theoryImporting) event.preventDefault(); }}
+      className="flex w-full flex-col gap-y-4"
+    >
       <input type="hidden" name="id" value={lesson?.id ?? ""} />
       <input
         type="hidden"
@@ -487,10 +534,44 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
           Теория (гайд){" "}
           <span className="font-normal text-neutral-400">(необязательно)</span>
         </span>
-        <TheoryEditor markdown={theory} onChange={setTheory} />
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            ref={folderInputRef}
+            type="file"
+            multiple
+            // @ts-expect-error нестандартный, но поддерживаемый браузерами атрибут выбора папки
+            webkitdirectory=""
+            className="hidden"
+            onChange={(e) => {
+              const files = Array.from(e.target.files ?? []);
+              e.target.value = "";
+              if (files.length > 0) void importFolder(files);
+            }}
+          />
+          <Button
+            type="button"
+            variant="secondaryOutline"
+            size="sm"
+            disabled={pending || theoryImporting}
+            onClick={() => folderInputRef.current?.click()}
+          >
+            <FolderInput className="mr-2 h-4 w-4" />
+            {theoryImporting ? "Импортирую…" : "Импорт из папки"}
+          </Button>
+          {theoryImport && (
+            <span role="status" className="break-words text-sm text-neutral-500">
+              {theoryImporting
+                ? `${theoryImport.note} · ${theoryImport.done}/${theoryImport.total}`
+                : theoryImport.note}
+            </span>
+          )}
+        </div>
+        <TheoryEditor key={theoryKey} markdown={theory} onChange={setTheory} />
         <span className="text-sm text-neutral-400">
           Показывается ученику перед заданиями. Картинки можно перетащить в
           текст или вставить через Ctrl+V — они сами загрузятся в хранилище.
+          «Импорт из папки» заменяет теорию из .md-файла и загружает связанные
+          картинки. Вопросы добавляются кнопкой «Импорт заданий (JSON)» ниже.
         </span>
       </div>
 
@@ -869,7 +950,7 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
 
       {/* Липкая панель: форма длинная, «Сохранить» должна быть под рукой при любом скролле. */}
       <div className="sticky bottom-0 z-10 -mx-3 mb-6 mt-2 flex items-center gap-x-3 border-t-2 border-neutral-200 bg-white/95 px-3 py-3 backdrop-blur">
-        <Button type="submit" variant="secondary" disabled={pending}>
+        <Button type="submit" variant="secondary" disabled={pending || theoryImporting}>
           {pending ? "Сохраняю…" : "Сохранить"}
         </Button>
         <Button variant="ghost" asChild>

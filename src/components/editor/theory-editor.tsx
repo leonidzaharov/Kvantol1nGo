@@ -41,64 +41,29 @@ import {
 } from "@mdxeditor/editor";
 
 import { normalizeTheoryHtml } from "@/lib/lesson-content";
+import { uploadImageFile } from "@/lib/image-upload";
 
 // ============================================================
 // Визуальный (WYSIWYG) редактор теории урока поверх MDXEditor.
 //
-// Снаружи — то же, что textarea: принимает markdown-строку и отдаёт
+// Снаружи - то же, что textarea: принимает markdown-строку и отдаёт
 // markdown в onChange. В БД по-прежнему лежит обычный Markdown, ученик
-// видит его через <Markdown> (react-markdown) — ничего мигрировать не надо.
+// видит его через <Markdown> (react-markdown) - ничего мигрировать не надо.
 //
 // Картинки: перетаскивание, Ctrl+V и кнопка тулбара уходят POST-ом в
 // /api/admin/upload-image (локальная папка UPLOADS_DIR, отдаётся как
 // /media/<имя>), в текст вставляется ссылка.
 //
-// Импортировать ТОЛЬКО через next/dynamic c ssr: false — редактор живёт
+// Импортировать ТОЛЬКО через next/dynamic c ssr: false - редактор живёт
 // на Lexical и в серверном рендере падает.
 // ============================================================
 
-// Файлы хранятся как есть (сжатия на сервере нет), поэтому жмём картинку
-// в браузере ДО загрузки: ширина до 1600px, перекодировка в WebP.
-// Скриншот с 2–4 МБ ужимается до ~100–200 КБ.
-const MAX_WIDTH = 1600;
-const WEBP_QUALITY = 0.8;
-
-async function compressImage(file: File): Promise<File> {
-  // GIF не трогаем: canvas оставит только первый кадр, анимация пропадёт.
-  if (file.type === "image/gif") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, MAX_WIDTH / bitmap.width);
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    bitmap.close();
-    const blob = await new Promise<Blob | null>((resolve) =>
-      canvas.toBlob(resolve, "image/webp", WEBP_QUALITY),
-    );
-    // WebP не вышел или получился крупнее оригинала — шлём оригинал.
-    if (!blob || blob.size >= file.size) return file;
-    return new File([blob], "image.webp", { type: "image/webp" });
-  } catch {
-    return file; // битый/экзотический файл — пусть сервер решает
-  }
-}
-
-async function uploadImage(image: File): Promise<string> {
-  const body = new FormData();
-  body.append("file", await compressImage(image));
-  const res = await fetch("/api/admin/upload-image", { method: "POST", body });
-  const json: unknown = await res.json().catch(() => null);
-  const parsed = (json ?? {}) as { url?: string; error?: string };
-  if (!res.ok || !parsed.url) {
-    throw new Error(parsed.error ?? "Не удалось загрузить картинку");
-  }
-  return parsed.url;
-}
+// Сжатие и загрузка картинок живут в src/lib/image-upload.ts - тот же
+// код использует импорт урока из папки.
+const uploadImage = uploadImageFile;
 
 // Внутри редактора текст стилизуем так же, как ученик увидит его в
-// <Markdown> — WYSIWYG без сюрпризов (Tailwind сбрасывает теги, поэтому явно).
+// <Markdown> - WYSIWYG без сюрпризов (Tailwind сбрасывает теги, поэтому явно).
 const contentClass =
   "min-h-[260px] p-4 font-medium text-neutral-700 focus:outline-none " +
   "[&_h1]:mt-4 [&_h1]:text-2xl [&_h1]:font-extrabold [&_h1]:text-neutral-700 " +
