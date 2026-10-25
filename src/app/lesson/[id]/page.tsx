@@ -3,10 +3,11 @@ import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canAccessLesson } from "@/lib/course-access";
 import { prisma } from "@/lib/db";
-import {
-  parseLessonContent,
-  sanitizeLessonContent,
-} from "@/lib/lesson-content";
+import { sanitizeLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
+import { lessonRevision } from "@/lib/lesson-revision";
+import { sanitizePracticeContent } from "@/lib/practice-content";
+import { LessonPractice } from "@/components/practice/LessonPractice";
 import { computeLessonResume } from "@/lib/lesson-resume";
 import { splitTheoryIntoSections } from "@/lib/theory-sections";
 
@@ -34,12 +35,25 @@ export default async function LessonPage({ params }: PageProps) {
   ]);
   if (!lesson || !allowed) notFound();
 
-  const parsed = parseLessonContent(lesson.content);
+  const parsed = parseLessonDocument(lesson.content);
+  if (!parsed) notFound();
   const progress = await prisma.userLessonProgress.upsert({
     where: { userId_lessonId: { userId, lessonId } },
     create: { userId, lessonId, totalQuestions: parsed.questions.length },
     update: { totalQuestions: parsed.questions.length },
   });
+
+  if (isPracticeContent(parsed)) {
+    return <LessonPractice
+      lessonId={lesson.id}
+      title={lesson.title}
+      revision={lessonRevision(lesson.content)}
+      sessionKey={`${userId}:${lesson.id}`}
+      content={sanitizePracticeContent(parsed)}
+      initialTheoryStep={progress.isCompleted ? 0 : progress.theoryStep}
+      initialSolvedIds={progress.isCompleted ? [] : progress.answeredCore.flatMap((index) => parsed.questions[index] ? [parsed.questions[index].id] : [])}
+    />;
+  }
 
   // Восстанавливаем место остановки незавершённого урока. Если контент
   // поменялся (наставник отредактировал), индексы зажаты в новые границы.

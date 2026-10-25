@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { QuestRunner } from "@/app/lesson/[id]/QuestRunner";
+import { LessonPractice } from "@/components/practice/LessonPractice";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
-import {
-  parseLessonContent,
-  sanitizeLessonContent,
-} from "@/lib/lesson-content";
+import { sanitizeLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
+import { lessonRevision } from "@/lib/lesson-revision";
+import { sanitizePracticeContent } from "@/lib/practice-content";
 import { requireAdminOr404 } from "@/lib/server-guard";
 
 type PageProps = {
@@ -25,6 +26,8 @@ export default async function LessonPreviewPage({ params }: PageProps) {
     select: { id: true, title: true, content: true, isPublished: true },
   });
   if (!lesson) notFound();
+  const content = parseLessonDocument(lesson.content);
+  if (!content) notFound();
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
@@ -41,14 +44,21 @@ export default async function LessonPreviewPage({ params }: PageProps) {
         </Button>
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
-        <QuestRunner
+        {isPracticeContent(content) ? <LessonPractice
           lessonId={lesson.id}
           title={lesson.title}
-          content={sanitizeLessonContent(parseLessonContent(lesson.content))}
+          revision={lessonRevision(lesson.content)}
+          sessionKey={`preview:${lesson.id}`}
+          content={sanitizePracticeContent(content)}
+          previewMode
+        /> : <QuestRunner
+          lessonId={lesson.id}
+          title={lesson.title}
+          content={sanitizeLessonContent(content)}
           alreadyCompleted={false}
           previewMode
           draftUserId={null}
-        />
+        />}
       </div>
     </div>
   );

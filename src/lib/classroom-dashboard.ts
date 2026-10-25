@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { classroomActiveCutoff } from "@/lib/classroom-session-logic";
 import { mentorStudentName } from "@/lib/student-identity";
-import { parseLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
 import type {
   ClassroomDashboardSnapshot,
   ClassroomStudentSnapshot,
@@ -56,7 +56,8 @@ export async function getClassroomDashboardSnapshot(
   });
   if (!session?.activatedAt) return null;
 
-  const content = parseLessonContent(session.lesson.content);
+  const content = parseLessonDocument(session.lesson.content);
+  if (!content) return null;
   const progressByUser = new Map(
     session.students.map((row) => [row.userId, row]),
   );
@@ -136,14 +137,12 @@ export async function getClassroomDashboardSnapshot(
   for (const row of session.questions) {
     if (row.wrongAttempts === 0) continue;
     const key = `${row.section}:${row.questionIndex}`;
-    const questions =
-      row.section === "bonus"
-        ? content.bonusQuestions
-        : content.questions;
     const existing = problemMap.get(key) ?? {
       section: row.section,
       questionIndex: row.questionIndex,
-      prompt: questions[row.questionIndex]?.prompt ?? "Задание удалено",
+      prompt: isPracticeContent(content)
+        ? (row.section === "bonus" ? content.bonusQuestions : content.questions)[row.questionIndex]?.variants[0]?.prompt ?? "Задание удалено"
+        : content[row.section === "bonus" ? "bonusQuestions" : "questions"][row.questionIndex]?.prompt ?? "Задание удалено",
       wrongAttempts: 0,
       studentCount: 0,
       users: new Set<string>(),

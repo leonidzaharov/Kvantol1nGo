@@ -53,7 +53,7 @@
   --code-editor-invalid: #dc2626;
 }
 
-/* Vercel Preview со специальным staging-флагом сохраняет контрастную палитру.
+/* Тестовое окружение со staging-флагом сохраняет контрастную палитру.
    Production и обычный localhost по умолчанию используют яркие цвета выше. */
 html[data-deployment="staging"] {
   --color-neutral-400: #626262;

@@ -6,7 +6,8 @@ import { z } from "zod";
 
 import { recordAdminAudit } from "@/lib/admin-audit";
 import { prisma } from "@/lib/db";
-import { LessonContentSchema } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
+import { lockLessonContent } from "@/lib/lesson-revision";
 import { IdSchema, parse, requireAdmin } from "@/lib/server-guard";
 
 export type LessonFormState = { error: string } | null;
@@ -53,22 +54,8 @@ export async function saveLesson(
     };
   }
 
-  let contentParsed;
-  try {
-    contentParsed = LessonContentSchema.safeParse(
-      JSON.parse(String(formData.get("contentJson") ?? "")),
-    );
-  } catch {
-    return { error: "Контент урока повреждён — обнови страницу" };
-  }
-  if (!contentParsed.success) {
-    return {
-      error:
-        "Проверь вопросы: " +
-        (contentParsed.error.issues[0]?.message ?? "некорректный формат"),
-    };
-  }
-  const content = contentParsed.data;
+  const content = parseLessonDocument(String(formData.get("contentJson") ?? ""));
+  if (!content) return { error: "Проверь формат и обязательные поля вопросов" };
   if (content.questions.length === 0 && content.theory.trim() === "") {
     return { error: "Урок пустой: добавь теорию или хотя бы один вопрос" };
   }
@@ -94,6 +81,25 @@ export async function saveLesson(
   });
 
   const saved = await prisma.$transaction(async (tx) => {
+    if (id !== null) {
+      await lockLessonContent(tx, id, true);
+      const existing = await tx.lesson.findUnique({
+        where: { id }, select: { content: true, isPublished: true },
+      });
+      if (!existing) return { error: "Урок не найден" };
+      const previous = parseLessonDocument(existing.content);
+      const wasPractice = previous !== null && isPracticeContent(previous);
+      const becomesPractice = isPracticeContent(content);
+      const contentChanged = JSON.stringify(previous) !== JSON.stringify(content);
+      if (contentChanged && (wasPractice || becomesPractice || previous === null)) {
+        const hasProgress = await tx.userLessonProgress.findFirst({
+          where: { lessonId: id }, select: { userId: true },
+        });
+        if (hasProgress || existing.isPublished) {
+          return { error: "Содержимое опубликованной практики или практики с прогрессом нельзя менять. Создай новую версию отдельным уроком" };
+        }
+      }
+    }
     if (occupied) {
       await tx.lesson.updateMany({
         where: {
@@ -118,6 +124,8 @@ export async function saveLesson(
     return savedLesson;
   });
 
+  if ("error" in saved) return saved;
+
   revalidateLessonPages();
   redirect(id === null ? `/admin/lessons/${saved.id}` : "/admin/lessons");
 }
@@ -132,6 +140,7 @@ export async function deleteLesson(formData: FormData): Promise<void> {
   const id = parse(z.coerce.number().pipe(IdSchema), formData.get("id"));
 
   await prisma.$transaction(async (tx) => {
+    await lockLessonContent(tx, id, true);
     await tx.userLessonProgress.deleteMany({ where: { lessonId: id } });
     const lesson = await tx.lesson.delete({ where: { id } });
     await recordAdminAudit(tx, {

@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
-import { parseLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
 import { requireAdminOr404 } from "@/lib/server-guard";
 
 import { LessonGroupAccessForm } from "../../group-access-form";
@@ -23,6 +23,7 @@ export default async function EditLessonPage({ params }: PageProps) {
     prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
+        _count: { select: { progress: true } },
         groupRestrictions: { select: { groupId: true } },
         category: {
           include: {
@@ -45,6 +46,7 @@ export default async function EditLessonPage({ params }: PageProps) {
     }),
   ]);
   if (!lesson) notFound();
+  const content = parseLessonDocument(lesson.content);
 
   return (
     <div className="px-3">
@@ -59,7 +61,8 @@ export default async function EditLessonPage({ params }: PageProps) {
             </Link>
           </Button>
         </div>
-        <LessonForm
+        {content ? <LessonForm
+          contentLocked={isPracticeContent(content) && (lesson.isPublished || lesson._count.progress > 0)}
           categories={categories.map((category) => ({
             id: category.id,
             name: category.name,
@@ -73,9 +76,9 @@ export default async function EditLessonPage({ params }: PageProps) {
             xpReward: lesson.xpReward,
             coinReward: lesson.coinReward,
             sortOrder: lesson.sortOrder,
-            content: parseLessonContent(lesson.content),
+            content,
           }}
-        />
+        /> : <p role="alert" className="mb-6 rounded-xl bg-amber-50 p-4 text-neutral-700">Контент урока повреждён или использует неизвестный формат. Восстановите исходный файл перед редактированием.</p>}
         <div className="mb-10">
           <LessonGroupAccessForm
             lessonId={lesson.id}

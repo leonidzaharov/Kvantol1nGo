@@ -17,6 +17,34 @@ function fakeFile(name: string, relative = name): File {
   return file;
 }
 
+function markdownFile(markdown: string): File {
+  const file = new File([markdown], "lesson.md");
+  Object.defineProperty(file, "webkitRelativePath", { value: "pack/lesson.md" });
+  return file;
+}
+
+describe("folder import with an embedded question command", () => {
+  const question = { prompt: "Сколько?", options: ["2", "3"], correctIndex: 0 };
+  it("rewrites only theory images and returns parsed questions separately", async () => {
+    const upload = vi.fn().mockResolvedValue("/media/card.webp");
+    const md = markdownFile(`![Карточка](images/a.png)\n\n\`\`\`kvantolingo\n${JSON.stringify([{ ...question, prompt: "Что на ![](private/unused.png)?" }])}\n\`\`\``);
+    const result = await importTheoryFolder([md, fakeFile("a.png", "pack/images/a.png")], upload);
+    expect(result.markdown).toBe("![Карточка](/media/card.webp)\n\n");
+    expect(result.questionImport?.format).toBe("classic");
+    expect(result.markdown).not.toContain("correctIndex");
+    expect(result.total).toBe(1);
+    expect(result.missing).toEqual([]);
+    expect(upload).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a broken command before any upload", async () => {
+    const upload = vi.fn();
+    const md = markdownFile("![Карточка](a.png)\n```kvantolingo\n{bad}\n```");
+    await expect(importTheoryFolder([md, fakeFile("a.png", "pack/a.png")], upload)).rejects.toThrow("JSON");
+    expect(upload).not.toHaveBeenCalled();
+  });
+});
+
 describe("extractRelativeImagePaths", () => {
   it("collects relative image urls in order without duplicates", () => {
     const md = "![](assets/a.png) ![](assets/b.png) ![x](assets/a.png)";

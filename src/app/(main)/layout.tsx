@@ -10,9 +10,10 @@ import { prisma } from "@/lib/db";
 
 const MainLayout = async ({ children }: PropsWithChildren) => {
   const session = await auth();
-  const identity = session?.user?.id
+  const userId = session?.user?.id;
+  const identity = userId
     ? await prisma.user.findUnique({
-        where: { id: session.user.id },
+        where: { id: userId },
         select: { isAdmin: true, profileConfiguredAt: true },
       })
     : null;
@@ -20,10 +21,10 @@ const MainLayout = async ({ children }: PropsWithChildren) => {
   if (identity && !identity.isAdmin && !identity.profileConfiguredAt) {
     redirect("/profile-setup");
   }
-  const pendingRows = session?.user?.id
+  const pendingRows = userId
     ? await prisma.userAchievement.findMany({
         where: {
-          userId: session.user.id,
+          userId,
           isUnlocked: true,
           notifiedAt: null,
           achievement: { isActive: true },

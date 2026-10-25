@@ -1,7 +1,6 @@
 "use client"; // границы ошибок обязаны быть клиентскими компонентами
 
 import { useEffect } from "react";
-import * as Sentry from "@sentry/nextjs";
 
 import "./globals.css";
 
@@ -16,13 +15,13 @@ export default function GlobalError({
   error: Error & { digest?: string };
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    console.error(error);
   }, [error]);
 
   return (
     <html lang="ru" className="h-full antialiased">
       <body className="flex min-h-full flex-col">
-        <title>Ошибка — Кванториум</title>
+        <title>Ошибка - Кванториум</title>
         <div className="mx-auto flex flex-1 max-w-lg flex-col items-center justify-center gap-y-6 px-6 text-center">
           <div className="text-7xl">🛠️</div>
 
@@ -30,7 +29,7 @@ export default function GlobalError({
             Что-то сломалось
           </h1>
           <p className="font-medium text-neutral-500">
-            Мы уже знаем о проблеме. Обнови страницу — обычно помогает.
+            Обнови страницу. Если ошибка повторяется, сообщи наставнику.
           </p>
 
           <button

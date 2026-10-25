@@ -1,3 +1,4 @@
+// Historical migration reference. Not an executable project script.
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { createHash } from 'node:crypto';

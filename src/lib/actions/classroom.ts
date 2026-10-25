@@ -9,11 +9,10 @@ import { canAccessLesson } from "@/lib/course-access";
 import {
   closeExpiredClassroomCaptures,
   lockClassroomGroup,
-  recordClassroomAttempt,
   recordClassroomPosition,
 } from "@/lib/classroom-progress";
-import { parseLessonContent } from "@/lib/lesson-content";
-import { markCoreQuestionSolved } from "@/lib/lesson-progress";
+import { parseLessonDocument } from "@/lib/lesson-document";
+import { checkClassicLessonAttempt } from "@/lib/classic-lesson-attempt";
 import {
   IdSchema,
   parse,
@@ -163,7 +162,8 @@ export async function reportLessonPosition(
     select: { content: true },
   });
   if (!lesson) return;
-  const content = parseLessonContent(lesson.content);
+  const content = parseLessonDocument(lesson.content);
+  if (!content) return;
 
   await recordClassroomPosition({
     userId,
@@ -189,49 +189,7 @@ export async function recordCodeAttempt(
   correct = parse(z.boolean(), correct);
   if (!(await canAccessLesson(userId, lessonId))) return;
 
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    select: { content: true },
-  });
-  if (!lesson) return;
-  const content = parseLessonContent(lesson.content);
-  const questions =
-    section === "bonus" ? content.bonusQuestions : content.questions;
-  if (questions[questionIndex]?.type !== "code") return;
-
-  await Promise.all([
-    recordClassroomAttempt({
-      userId,
-      lessonId,
-      phase: section === "bonus" ? "bonus" : "tasks",
-      questionIndex,
-      totalQuestions: content.questions.length,
-      bonusTotalQuestions: content.bonusQuestions.length,
-      section,
-      correct,
-    }),
-    ...(section === "core"
-      ? [
-          // Верный запуск кода — серверная отметка «задание решено»
-          // (ожидаемый вывод ученику и так виден, скрытого ответа нет).
-          correct
-            ? markCoreQuestionSolved(
-                userId,
-                lessonId,
-                questionIndex,
-                content.questions.length,
-              )
-            : prisma.userLessonProgress.upsert({
-                where: { userId_lessonId: { userId, lessonId } },
-                create: {
-                  userId,
-                  lessonId,
-                  totalQuestions: content.questions.length,
-                  wrongAttempts: 1,
-                },
-                update: { wrongAttempts: { increment: 1 } },
-              }),
-        ]
-      : []),
-  ]);
+  await checkClassicLessonAttempt(userId, lessonId, questionIndex, section, (question) =>
+    question.type === "code" ? correct : null,
+  );
 }

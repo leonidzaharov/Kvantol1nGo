@@ -4,22 +4,31 @@ import { useActionState, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowDown, ArrowUp, FolderInput, Play, Plus, Trash2, Upload } from "lucide-react";
-import { z } from "zod";
 
 import { saveLesson, type LessonFormState } from "@/lib/actions/lessons";
 import { TRACK_LABELS, TRACK_ORDER } from "@/lib/groups";
 import type { GroupTrack } from "@/generated/prisma";
 import {
   CODE_LANGUAGES,
-  LessonQuestionSchema,
   type CodeLanguage,
   type LessonContent,
 } from "@/lib/lesson-content";
 import { LANGUAGE_LABELS, runCode } from "@/lib/code-runner";
 import { Button } from "@/components/ui/button";
+import { PracticeEditor } from "@/components/practice/PracticeEditor";
+import type { StoredPracticeContent } from "@/lib/practice-content";
+import { mergeLessonQuestionImport } from "@/lib/practice-editor";
+import {
+  isPracticeContent,
+  parseLessonMarkdown,
+  parseLessonQuestionsImport,
+  type LessonQuestionsImport,
+} from "@/lib/lesson-document";
 import { uploadImageFile } from "@/lib/image-upload";
 import {
+  extractRelativeImagePaths,
   importTheoryFolder,
+  pickMarkdownFile,
   type TheoryImportProgress,
 } from "@/lib/lesson-import";
 
@@ -116,7 +125,7 @@ function fromContent(content: LessonContent): EditorQuestion[] {
 }
 
 // Сериализация в формат Lesson.content (см. src/lib/lesson-content.ts).
-function toContentJson(theory: string, questions: EditorQuestion[]): string {
+function toContent(theory: string, questions: EditorQuestion[]): LessonContent {
   const serialize = (q: EditorQuestion) => {
     if (q.kind === "code") {
       return {
@@ -143,11 +152,11 @@ function toContentJson(theory: string, questions: EditorQuestion[]): string {
     };
   };
 
-  return JSON.stringify({
+  return {
     theory,
     questions: questions.filter((q) => !q.bonus).map(serialize),
     bonusQuestions: questions.filter((q) => q.bonus).map(serialize),
-  });
+  };
 }
 
 type CategoryOption = {
@@ -160,6 +169,7 @@ type CategoryOption = {
 
 type LessonFormProps = {
   categories: CategoryOption[];
+  contentLocked?: boolean;
   /** Урок для правки; не передан — форма создания. */
   lesson?: {
     id: number;
@@ -168,23 +178,31 @@ type LessonFormProps = {
     xpReward: number;
     coinReward: number;
     sortOrder: number;
-    content: LessonContent;
+    content: LessonContent | StoredPracticeContent;
   };
 };
 
 // Одна форма на создание и правку: скрытое поле id пустое → create.
 // Вопросы живут в React-состоянии и уходят на сервер одним скрытым
 // JSON-полем contentJson.
-export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
+export const LessonForm = ({ categories, lesson, contentLocked = false }: LessonFormProps) => {
   const [state, formAction, pending] = useActionState<
     LessonFormState,
     FormData
   >(saveLesson, null);
 
+  const initialPractice = lesson?.content && isPracticeContent(lesson.content)
+    ? lesson.content
+    : null;
+  const [format, setFormat] = useState<"classic" | "practice-v1">(initialPractice ? "practice-v1" : "classic");
   const [theory, setTheory] = useState(lesson?.content.theory ?? "");
   const [questions, setQuestions] = useState<EditorQuestion[]>(() =>
-    lesson ? fromContent(lesson.content) : [],
+    lesson && !initialPractice ? fromContent(lesson.content as LessonContent) : [],
   );
+  const [practice, setPractice] = useState<StoredPracticeContent>(initialPractice ?? {
+    format: "practice-v1", theory: "", questions: [], bonusQuestions: [],
+  });
+  const [coinReward, setCoinReward] = useState(lesson?.coinReward ?? 20);
   const [categoryId, setCategoryId] = useState(
     lesson?.categoryId ?? categories[0]?.id ?? 0,
   );
@@ -325,62 +343,61 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
     });
   };
 
-  // ── Импорт заданий из JSON-файла ──
-  // Принимает два формата:
-  //   [{...задание...}]                                   - все в основные;
-  //   { questions: [...], bonusQuestions: [...] }         - по своим секциям.
-  // Каждое задание проверяется той же схемой, что и сохранение урока,
-  // поэтому битый файл не сможет уронить форму: покажет подсказку.
+  // JSON и Markdown используют один разбор. Замена заданий всегда явная.
   const [importNote, setImportNote] = useState<string | null>(null);
+  const [pendingImport, setPendingImport] = useState<{
+    questions: LessonQuestionsImport;
+    theory?: string;
+  } | null>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
+  const markdownInputRef = useRef<HTMLInputElement>(null);
+  const importBusyRef = useRef(false);
+
+  const currentQuestionImport = (): LessonQuestionsImport => {
+    if (format === "practice-v1") return { format, questions: practice.questions, bonusQuestions: practice.bonusQuestions };
+    const current = toContent("", questions);
+    return { format, questions: current.questions, bonusQuestions: current.bonusQuestions };
+  };
+  const allowFormatChange = !lesson && questions.length === 0 && practice.questions.length + practice.bonusQuestions.length === 0;
+  const queueQuestionImport = (incoming: LessonQuestionsImport, importedTheory?: string) => {
+    if (incoming.format !== format && !allowFormatChange) {
+      throw new Error("Формат импортируемых заданий отличается. Для него создай новый урок. Текущие задания сохранены.");
+    }
+    setPendingImport({ questions: incoming, theory: importedTheory });
+  };
+  const applyQuestionImport = (mode: "append" | "replace") => {
+    if (!pendingImport || contentLocked) return;
+    try {
+      const merged = mergeLessonQuestionImport(currentQuestionImport(), pendingImport.questions, mode, allowFormatChange);
+      if (merged.format === "practice-v1") {
+        setPractice({ format: "practice-v1", theory: "", questions: merged.questions, bonusQuestions: merged.bonusQuestions });
+      } else {
+        setQuestions(fromContent({ theory: "", questions: merged.questions, bonusQuestions: merged.bonusQuestions }));
+      }
+      setFormat(merged.format);
+      if (pendingImport.theory !== undefined) {
+        setTheory(pendingImport.theory);
+        setTheoryKey((key) => key + 1);
+      }
+      setImportNote(`Готово: ${merged.questions.length} основных и ${merged.bonusQuestions.length} дополнительных заданий.`);
+      setPendingImport(null);
+    } catch (error) {
+      setImportNote(error instanceof Error ? error.message : "Не удалось применить импорт");
+    }
+  };
 
   const importQuestions = async (file: File) => {
+    if (contentLocked || importBusyRef.current || pendingImport) return;
+    importBusyRef.current = true;
+    setTheoryImporting(true);
     setImportNote(null);
     try {
-      const raw: unknown = JSON.parse(await file.text());
-      const asObject = raw as {
-        questions?: unknown;
-        bonusQuestions?: unknown;
-      };
-      const coreRaw = Array.isArray(raw) ? raw : (asObject.questions ?? []);
-      const bonusRaw = Array.isArray(raw)
-        ? []
-        : (asObject.bonusQuestions ?? []);
-      const core = z.array(LessonQuestionSchema).safeParse(coreRaw);
-      const bonus = z.array(LessonQuestionSchema).safeParse(bonusRaw);
-      if (
-        !core.success ||
-        !bonus.success ||
-        (core.data.length === 0 && bonus.data.length === 0)
-      ) {
-        setImportNote(
-          "Формат не подошёл. Жду массив заданий или объект с полями questions и bonusQuestions.",
-        );
-        return;
-      }
-      const imported = fromContent({
-        theory: "",
-        questions: core.data,
-        bonusQuestions: bonus.data,
-      });
-      const importedCore = imported.filter((q) => !q.bonus);
-      const importedBonus = imported.filter((q) => q.bonus);
-      setQuestions((prev) => [
-        ...prev.filter((q) => !q.bonus),
-        ...importedCore,
-        ...prev.filter((q) => q.bonus),
-        ...importedBonus,
-      ]);
-      setImportNote(
-        `Импортировано: ${importedCore.length} основных` +
-          (importedBonus.length > 0
-            ? ` и ${importedBonus.length} со звёздочкой`
-            : "") +
-          ".",
-      );
-    } catch {
-      setImportNote("Не удалось прочитать файл - это точно JSON?");
+      queueQuestionImport(parseLessonQuestionsImport(JSON.parse(await file.text())));
+    } catch (error) {
+      setImportNote(error instanceof SyntaxError ? "Не удалось прочитать файл - это точно JSON?" : error instanceof Error ? error.message : "Не удалось импортировать задания");
     } finally {
+      importBusyRef.current = false;
+      setTheoryImporting(false);
       // Сбрасываем input, чтобы повторный выбор того же файла сработал.
       if (importInputRef.current) importInputRef.current.value = "";
     }
@@ -396,14 +413,50 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
   const [theoryImporting, setTheoryImporting] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
+  const importMarkdown = async (file: File) => {
+    if (contentLocked || importBusyRef.current || pendingImport) return;
+    importBusyRef.current = true;
+    setTheoryImporting(true);
+    setImportNote(null);
+    try {
+      const result = parseLessonMarkdown(await file.text());
+      if (extractRelativeImagePaths(result.theory).length > 0) {
+        throw new Error("В Markdown есть картинки из папки. Используй «Импорт из папки», чтобы загрузить их вместе с уроком. Текущий урок сохранён.");
+      }
+      if (result.questionImport) queueQuestionImport(result.questionImport, result.theory);
+      else {
+        setTheory(result.theory);
+        setTheoryKey((key) => key + 1);
+        setImportNote("Теория импортирована. Текущие задания сохранены.");
+      }
+    } catch (error) {
+      setImportNote(error instanceof Error ? error.message : "Не удалось прочитать Markdown");
+    } finally {
+      importBusyRef.current = false;
+      setTheoryImporting(false);
+      if (markdownInputRef.current) markdownInputRef.current.value = "";
+    }
+  };
+
   const importFolder = async (files: File[]) => {
-    if (theoryImporting) return;
+    if (importBusyRef.current || pendingImport || contentLocked) return;
+    importBusyRef.current = true;
     setTheoryImporting(true);
     setTheoryImport(null);
     try {
+      const markdownFile = await pickMarkdownFile(files);
+      if (!markdownFile) throw new Error("В папке нет файла .md");
+      const preflight = parseLessonMarkdown(await markdownFile.text());
+      if (preflight.questionImport && preflight.questionImport.format !== format && !allowFormatChange) {
+        throw new Error("Формат импортируемых заданий отличается. Для него создай новый урок. Текущие задания сохранены.");
+      }
       const result = await importTheoryFolder(files, uploadImageFile, setTheoryImport);
-      setTheory(result.markdown);
-      setTheoryKey((k) => k + 1);
+      if (result.questionImport) {
+        queueQuestionImport(result.questionImport, result.markdown);
+      } else {
+        setTheory(result.markdown);
+        setTheoryKey((k) => k + 1);
+      }
       setTheoryImport({
         done: result.done,
         total: result.total,
@@ -420,6 +473,7 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
         note: error instanceof Error ? error.message : "Не удалось импортировать папку",
       });
     } finally {
+      importBusyRef.current = false;
       setTheoryImporting(false);
     }
   };
@@ -439,14 +493,14 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
   return (
     <form
       action={formAction}
-      onSubmit={(event) => { if (theoryImporting) event.preventDefault(); }}
+      onSubmit={(event) => { if (theoryImporting || pendingImport) event.preventDefault(); }}
       className="flex w-full flex-col gap-y-4"
     >
       <input type="hidden" name="id" value={lesson?.id ?? ""} />
       <input
         type="hidden"
         name="contentJson"
-        value={toContentJson(theory, questions)}
+        value={JSON.stringify(format === "practice-v1" ? { ...practice, theory } : toContent(theory, questions))}
       />
 
       <label className="flex flex-col gap-y-1.5">
@@ -523,12 +577,26 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
             required
             min={0}
             max={20}
-            defaultValue={lesson?.coinReward ?? 20}
+            value={coinReward}
+            onChange={(event) => setCoinReward(Number(event.target.value))}
             className={inputClass}
           />
+          <span className="flex flex-wrap gap-2">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setCoinReward(5)}>Короткая проверка: 5</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setCoinReward(20)}>Практика: 20</Button>
+          </span>
         </label>
       </div>
 
+      {contentLocked && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Содержание этой практики закреплено за опубликованным уроком или сохранённым прогрессом. Для новых заданий создай отдельный урок.</p>}
+      <fieldset disabled={pending || theoryImporting || contentLocked} className="flex min-w-0 flex-col gap-4">
+      <label className="flex flex-col gap-1.5 font-bold text-neutral-700">Формат урока
+        <select value={format} disabled={!!lesson || !allowFormatChange || !!pendingImport} className={inputClass} onChange={(event) => setFormat(event.target.value as "classic" | "practice-v1")}>
+          <option value="classic">Обычный урок</option>
+          <option value="practice-v1">Практика с разбором и повторением</option>
+        </select>
+        <span className="text-sm font-normal text-neutral-500">Выбери формат до добавления заданий. Для существующего урока формат сохраняется.</span>
+      </label>
       <div className="flex flex-col gap-y-1.5">
         <span className="font-bold text-neutral-700">
           Теория (гайд){" "}
@@ -552,12 +620,19 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
             type="button"
             variant="secondaryOutline"
             size="sm"
-            disabled={pending || theoryImporting}
+            disabled={pending || theoryImporting || !!pendingImport}
             onClick={() => folderInputRef.current?.click()}
           >
             <FolderInput className="mr-2 h-4 w-4" />
             {theoryImporting ? "Импортирую…" : "Импорт из папки"}
           </Button>
+          <Button type="button" variant="ghost" size="sm" disabled={!!pendingImport} onClick={() => markdownInputRef.current?.click()}>
+            <Upload className="mr-2 h-4 w-4" />Импорт урока (MD)
+          </Button>
+          <input ref={markdownInputRef} type="file" accept=".md,.markdown,text/markdown" className="hidden" onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importMarkdown(file);
+          }} />
           {theoryImport && (
             <span role="status" className="break-words text-sm text-neutral-500">
               {theoryImporting
@@ -566,15 +641,21 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
             </span>
           )}
         </div>
-        <TheoryEditor key={theoryKey} markdown={theory} onChange={setTheory} />
+        {contentLocked ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-neutral-200 p-3 text-sm text-neutral-500">{theory || "Теория не добавлена"}</pre> : <TheoryEditor key={theoryKey} markdown={theory} onChange={(value) => { if (!theoryImporting) setTheory(value); }} />}
         <span className="text-sm text-neutral-400">
           Показывается ученику перед заданиями. Картинки можно перетащить в
-          текст или вставить через Ctrl+V — они сами загрузятся в хранилище.
+          текст или вставить через Ctrl+V - они сами загрузятся в хранилище.
           «Импорт из папки» заменяет теорию из .md-файла и загружает связанные
-          картинки. Вопросы добавляются кнопкой «Импорт заданий (JSON)» ниже.
+          картинки. Блок kvantolingo внутри .md также импортирует задания после
+          подтверждения. Обычный .md сохраняет текущие вопросы.
+          Для картинок с относительными путями используй импорт папки.
         </span>
       </div>
 
+      {format === "practice-v1" ? (
+        <PracticeEditor content={practice} onChange={setPractice} />
+      ) : (
+      <>
       <h2 className="mt-2 text-lg font-bold text-neutral-700">
         Основные задания ({coreCount}) · Со звёздочкой ({bonusCount})
       </h2>
@@ -916,13 +997,13 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
         >
           ⭐ Дополнительный код
         </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => importInputRef.current?.click()}
-        >
-          <Upload className="mr-2 h-4 w-4" />
-          Импорт заданий (JSON)
+      </div>
+      </>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="ghost" disabled={!!pendingImport} onClick={() => importInputRef.current?.click()}>
+          <Upload className="mr-2 h-4 w-4" />Импорт заданий (JSON)
         </Button>
         <input
           ref={importInputRef}
@@ -941,6 +1022,17 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
           {importNote}
         </p>
       )}
+      {pendingImport && (
+        <div role="region" aria-label="Подтверждение импорта" className="flex flex-col gap-3 rounded-xl border-2 border-sky-200 bg-sky-50 p-3">
+          <p className="text-sm font-medium text-sky-800">Прочитано: {pendingImport.questions.questions.length} основных и {pendingImport.questions.bonusQuestions.length} дополнительных заданий. Формат: {pendingImport.questions.format === "practice-v1" ? "практика" : "обычный урок"}.{pendingImport.theory !== undefined ? " Теория заменится вместе с заданиями." : " Текущая теория сохранится."}</p>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondaryOutline" size="sm" onClick={() => applyQuestionImport("append")}>Добавить задания</Button>
+            <Button type="button" variant="dangerOutline" size="sm" onClick={() => applyQuestionImport("replace")}>Заменить все задания</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => setPendingImport(null)}>Отменить импорт</Button>
+          </div>
+        </div>
+      )}
+      </fieldset>
 
       {state?.error && (
         <p className="rounded-xl bg-rose-50 p-3 font-medium text-rose-600">
@@ -950,7 +1042,7 @@ export const LessonForm = ({ categories, lesson }: LessonFormProps) => {
 
       {/* Липкая панель: форма длинная, «Сохранить» должна быть под рукой при любом скролле. */}
       <div className="sticky bottom-0 z-10 -mx-3 mb-6 mt-2 flex items-center gap-x-3 border-t-2 border-neutral-200 bg-white/95 px-3 py-3 backdrop-blur">
-        <Button type="submit" variant="secondary" disabled={pending || theoryImporting}>
+        <Button type="submit" variant="secondary" disabled={pending || theoryImporting || !!pendingImport}>
           {pending ? "Сохраняю…" : "Сохранить"}
         </Button>
         <Button variant="ghost" asChild>

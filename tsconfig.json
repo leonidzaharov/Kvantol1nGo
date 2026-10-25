@@ -39,6 +39,7 @@
     ".next-e2e/dev/types/**/*.ts"
   ],
   "exclude": [
+    ".local",
     "node_modules",
     "scripts",
     "duo",

@@ -2,13 +2,10 @@
 
 import { useEffect } from "react";
 import Link from "next/link";
-import * as Sentry from "@sentry/nextjs";
 
 import { Button } from "@/components/ui/button";
 
-// Ловит ошибки рендера любой страницы (кроме корневого layout — для него
-// global-error.tsx). Ошибки из клиента боундари не шлёт в Sentry сама, поэтому
-// делаем это руками (captureException — no-op, если DSN не задан).
+// Ошибки страницы остаются в консоли браузера; серверные ошибки пишет Next.js.
 export default function Error({
   error,
   unstable_retry,
@@ -17,7 +14,7 @@ export default function Error({
   unstable_retry: () => void;
 }) {
   useEffect(() => {
-    Sentry.captureException(error);
+    console.error(error);
   }, [error]);
 
   return (
@@ -28,7 +25,7 @@ export default function Error({
         Что-то сломалось
       </h1>
       <p className="font-medium text-neutral-500">
-        Мы уже знаем о проблеме. Попробуй ещё раз — обычно помогает.
+        Попробуй ещё раз. Если ошибка повторяется, сообщи наставнику.
       </p>
 
       <div className="flex w-full flex-col gap-3 sm:flex-row sm:justify-center">

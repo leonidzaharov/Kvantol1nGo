@@ -5,10 +5,11 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { prisma } from "@/lib/db";
-import { parseLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
+import { lessonRevision, lockLessonContent } from "@/lib/lesson-revision";
 import {
   assertCoreSolved,
-  markCoreQuestionSolved,
+  lockLessonProgress,
 } from "@/lib/lesson-progress";
 import { splitTheoryIntoSections } from "@/lib/theory-sections";
 import {
@@ -20,9 +21,9 @@ import { IdSchema, parse, requireUser } from "@/lib/server-guard";
 import { calculateLevel } from "@/lib/gamification-logic";
 import { canAccessLesson } from "@/lib/course-access";
 import { textAnswersMatch } from "@/lib/text-answer";
+import { checkClassicLessonAttempt } from "@/lib/classic-lesson-attempt";
 import {
   markClassroomLessonCompleted,
-  recordClassroomAttempt,
 } from "@/lib/classroom-progress";
 
 export type CompleteLessonResult = {
@@ -41,6 +42,7 @@ export type CompleteLessonResult = {
 
 export async function completeLesson(
   lessonId: number,
+  revision?: string,
 ): Promise<CompleteLessonResult> {
   const userId = await requireUser();
   lessonId = parse(IdSchema, lessonId);
@@ -48,20 +50,22 @@ export async function completeLesson(
     throw new Error("FORBIDDEN");
   }
 
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    include: { category: { select: { id: true, name: true } } },
-  });
-  if (!lesson) {
-    throw new Error(`Урок ${lessonId} не найден`);
-  }
-
   const now = new Date();
-  const parsedContent = parseLessonContent(lesson.content);
-  const totalQuestions = parsedContent.questions.length;
-  const { user, updated, rewards, perfect } = await prisma.$transaction(async (tx) => {
+  const { user, updated, rewards, perfect, lesson, parsedContent, totalQuestions } = await prisma.$transaction(async (tx) => {
+    await lockLessonContent(tx, lessonId);
+    const lesson = await tx.lesson.findUnique({
+      where: { id: lessonId },
+      include: { category: { select: { id: true, name: true } } },
+    });
+    if (!lesson) throw new Error(`Урок ${lessonId} не найден`);
+    const parsedContent = parseLessonDocument(lesson.content);
+    if (!parsedContent) throw new Error("INVALID_LESSON_CONTENT");
+    const practice = isPracticeContent(parsedContent);
+    if (practice && lessonRevision(lesson.content) !== revision) throw new Error("CONTENT_CHANGED");
+    const totalQuestions = parsedContent.questions.length;
     // The same student lock is used by payouts: parallel completions cannot farm coins.
     await lockStudentBalance(tx, userId);
+    await lockLessonProgress(tx, userId, lessonId);
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
     const progress = await tx.userLessonProgress.findUnique({ where: { userId_lessonId: { userId, lessonId } } });
     // Завершить можно только урок, где ВСЕ основные задания подтверждены
@@ -69,7 +73,7 @@ export async function completeLesson(
     // наград не даёт. Для уже пройденного урока повторный вызов безопасен:
     // награды зависят от firstCompletion и не задвоятся.
     if (!progress?.isCompleted) {
-      assertCoreSolved(progress, totalQuestions);
+      assertCoreSolved(progress, totalQuestions, practice);
     }
     // «Перфект» считает сервер по записанным ошибкам — клиентский флаг
     // больше не принимаем (нельзя подделать безупречное прохождение).
@@ -81,7 +85,7 @@ export async function completeLesson(
       update: { answeredCount: totalQuestions, totalQuestions, isCompleted: true, ...(rewards.firstCompletion ? { completedAt: now } : {}) },
     });
     const updated = await tx.user.update({ where: { id: userId }, data: { totalXp: rewards.newTotalXp, level: rewards.newLevel, currency: { increment: rewards.gainedCoins }, lastActiveDate: now } });
-    return { user, updated, rewards, perfect };
+    return { user, updated, rewards, perfect, lesson, parsedContent, totalQuestions };
   });
   const { firstCompletion, gainedXp, gainedCoins, leveledUp } = rewards;
   // Метрики считаем прямо после транзакции — счётчики уже учитывают только
@@ -161,59 +165,10 @@ export async function checkAnswer(
   optionIndex = parse(z.number().int().min(0).max(7), optionIndex);
   section = parse(z.enum(["core", "bonus"]), section);
 
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    select: { content: true },
+  return checkClassicLessonAttempt(userId, lessonId, questionIndex, section, (question) => {
+    if (question.type === "code" || question.type === "text") return null;
+    return question.correctIndex === optionIndex;
   });
-  if (!lesson) return false;
-
-  const content = parseLessonContent(lesson.content);
-  const questions =
-    section === "bonus" ? content.bonusQuestions : content.questions;
-  const question = questions[questionIndex];
-  if (
-    !question ||
-    question.type === "code" ||
-    question.type === "text"
-  ) {
-    return false;
-  }
-
-  const correct = question.correctIndex === optionIndex;
-  await Promise.all([
-    recordClassroomAttempt({
-      userId,
-      lessonId,
-      phase: section === "bonus" ? "bonus" : "tasks",
-      questionIndex,
-      totalQuestions: content.questions.length,
-      bonusTotalQuestions: content.bonusQuestions.length,
-      section,
-      correct,
-    }),
-    ...(section === "core"
-      ? [
-          correct
-            ? markCoreQuestionSolved(
-                userId,
-                lessonId,
-                questionIndex,
-                content.questions.length,
-              )
-            : prisma.userLessonProgress.upsert({
-                where: { userId_lessonId: { userId, lessonId } },
-                create: {
-                  userId,
-                  lessonId,
-                  totalQuestions: content.questions.length,
-                  wrongAttempts: 1,
-                },
-                update: { wrongAttempts: { increment: 1 } },
-              }),
-        ]
-      : []),
-  ]);
-  return correct;
 }
 
 /**
@@ -233,54 +188,9 @@ export async function checkTextAnswer(
   answer = parse(z.string().max(1000), answer);
   section = parse(z.enum(["core", "bonus"]), section);
 
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    select: { content: true },
-  });
-  if (!lesson) return false;
-
-  const content = parseLessonContent(lesson.content);
-  const questions =
-    section === "bonus" ? content.bonusQuestions : content.questions;
-  const question = questions[questionIndex];
-  if (question?.type !== "text") return false;
-
-  const correct = textAnswersMatch(answer, question.correctAnswer);
-  await Promise.all([
-    recordClassroomAttempt({
-      userId,
-      lessonId,
-      phase: section === "bonus" ? "bonus" : "tasks",
-      questionIndex,
-      totalQuestions: content.questions.length,
-      bonusTotalQuestions: content.bonusQuestions.length,
-      section,
-      correct,
-    }),
-    ...(section === "core"
-      ? [
-          correct
-            ? markCoreQuestionSolved(
-                userId,
-                lessonId,
-                questionIndex,
-                content.questions.length,
-              )
-            : prisma.userLessonProgress.upsert({
-                where: { userId_lessonId: { userId, lessonId } },
-                create: {
-                  userId,
-                  lessonId,
-                  totalQuestions: content.questions.length,
-                  wrongAttempts: 1,
-                },
-                update: { wrongAttempts: { increment: 1 } },
-              }),
-        ]
-      : []),
-  ]);
-
-  return correct;
+  return checkClassicLessonAttempt(userId, lessonId, questionIndex, section, (question) =>
+    question.type === "text" ? textAnswersMatch(answer, question.correctAnswer) : null,
+  );
 }
 
 /**
@@ -297,31 +207,22 @@ export async function saveTheoryStep(
   step = parse(z.number().int().min(0).max(200), step);
   if (!(await canAccessLesson(userId, lessonId))) return;
 
-  const lesson = await prisma.lesson.findUnique({
-    where: { id: lessonId },
-    select: { content: true },
-  });
-  if (!lesson) return;
-
-  const parsed = parseLessonContent(lesson.content);
-  const theoryTotal = splitTheoryIntoSections(parsed.theory).length;
-  const clamped = Math.min(step, Math.max(0, theoryTotal));
-
-  const existing = await prisma.userLessonProgress.findUnique({
-    where: { userId_lessonId: { userId, lessonId } },
-    select: { isCompleted: true },
-  });
-  // Завершённый урок не переписываем — повтор всегда начинается с начала.
-  if (existing?.isCompleted) return;
-
-  await prisma.userLessonProgress.upsert({
-    where: { userId_lessonId: { userId, lessonId } },
-    create: {
-      userId,
-      lessonId,
-      theoryStep: clamped,
-      totalQuestions: parsed.questions.length,
-    },
-    update: { theoryStep: clamped },
+  await prisma.$transaction(async (tx) => {
+    await lockLessonContent(tx, lessonId);
+    const lesson = await tx.lesson.findUnique({ where: { id: lessonId }, select: { content: true } });
+    if (!lesson) return;
+    const content = parseLessonDocument(lesson.content);
+    if (!content) return;
+    const clamped = Math.min(step, splitTheoryIntoSections(content.theory).length);
+    await lockLessonProgress(tx, userId, lessonId);
+    const existing = await tx.userLessonProgress.findUnique({
+      where: { userId_lessonId: { userId, lessonId } }, select: { isCompleted: true },
+    });
+    if (existing?.isCompleted) return;
+    await tx.userLessonProgress.upsert({
+      where: { userId_lessonId: { userId, lessonId } },
+      create: { userId, lessonId, theoryStep: clamped, totalQuestions: content.questions.length },
+      update: { theoryStep: clamped },
+    });
   });
 }

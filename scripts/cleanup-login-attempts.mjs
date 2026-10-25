@@ -16,7 +16,7 @@
 // Запуск:
 //   node scripts/cleanup-login-attempts.mjs
 //
-// Для автоматизации: Vercel Cron Jobs (vercel.json → crons) или
+// Для автоматизации: systemd timer или
 // ленивый вызов из auth.ts раз в N логинов.
 // ============================================================
 

@@ -26,10 +26,17 @@ PIN хранится в виде bcrypt-хеша. Загруженные чер�
 установки описан в [инструкции для Debian](docs/DEBIAN_SETUP.md). Папка
 `lectures` в репозиторий не входит.
 
+Интерактивная практика: [описание подключения](docs/PRACTICE_CLIENT.md),
+[формат JSON и команды Markdown](docs/PRACTICE_FORMAT.md),
+[инструкция команде и проверка выпуска](docs/PRACTICE_HANDOFF.md).
+
 ## Запуск для разработки
 
-Нужны Node.js 24, npm и отдельная база PostgreSQL. Скопируйте необходимые
-настройки в `.env.local`, используя
+На настроенном компьютере достаточно `npm run dev`. База запускается
+автоматически. Вход наставника и подробности: [локальная проверка](docs/LOCAL_DEVELOPMENT.md).
+
+Для нового компьютера нужны Node.js 24, npm и отдельная база PostgreSQL.
+Скопируйте необходимые настройки в `.env`, используя
 [`deploy/linux/environment.example`](deploy/linux/environment.example) как
 образец. Укажите адрес **своей локальной** базы, `AUTH_SECRET`, локальный
 `AUTH_URL`, `STORAGE_DRIVER=local` и `UPLOADS_DIR`. Рабочие секреты не

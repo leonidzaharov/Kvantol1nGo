@@ -9,6 +9,7 @@
 // ============================================================
 
 import { normalizeTheoryHtml } from "@/lib/lesson-content";
+import { parseLessonMarkdown, type LessonQuestionsImport } from "@/lib/lesson-document";
 
 // Ссылка на картинку в markdown: ![alt](url) - извлекаем alt и url.
 // url бывает в угловых скобках, тогда внутри допускаются пробелы.
@@ -186,10 +187,12 @@ export async function importTheoryFolder(
   files: File[],
   upload: (file: File) => Promise<string>,
   onProgress: (progress: TheoryImportProgress) => void = () => {},
-): Promise<{ markdown: string; missing: string[]; done: number; total: number }> {
+): Promise<{ markdown: string; missing: string[]; done: number; total: number; questionImport?: LessonQuestionsImport }> {
   const md = await pickMarkdownFile(files);
   if (!md) throw new Error("В папке нет файла .md");
-  const text = normalizeTheoryHtml(await md.text());
+  // Parse before uploading: broken commands must not partially change editor data or upload assets.
+  const parsed = parseLessonMarkdown(await md.text());
+  const text = normalizeTheoryHtml(parsed.theory);
   const links = extractRelativeImagePaths(text);
   const index = buildFileIndex(files);
   const mdDir = directoryOf(md);
@@ -218,5 +221,8 @@ export async function importTheoryFolder(
       missing.push(`${link} (${error instanceof Error ? error.message : "ошибка загрузки"})`);
     }
   }
-  return { markdown: rewriteImageLinks(text, urlMap), missing, done, total: links.length };
+  return {
+    markdown: rewriteImageLinks(text, urlMap), missing, done, total: links.length,
+    ...(parsed.questionImport === null ? {} : { questionImport: parsed.questionImport }),
+  };
 }

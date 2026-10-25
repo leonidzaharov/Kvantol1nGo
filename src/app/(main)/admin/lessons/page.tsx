@@ -3,7 +3,7 @@ import { BookOpen, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
-import { parseLessonContent } from "@/lib/lesson-content";
+import { isPracticeContent, parseLessonDocument } from "@/lib/lesson-document";
 import { requireAdminOr404 } from "@/lib/server-guard";
 
 import { AdminNav } from "../admin-nav";
@@ -115,8 +115,8 @@ export default async function AdminLessonsPage({ searchParams }: PageProps) {
                 ) : (
                   <ul className="flex flex-col gap-y-2">
                     {category.lessons.map((lesson) => {
-                      const content = parseLessonContent(lesson.content);
-                      const hasTheory = content.theory.trim() !== "";
+                      const content = parseLessonDocument(lesson.content);
+                      const hasTheory = Boolean(content?.theory.trim());
                       return (
                         <li
                           key={lesson.id}
@@ -131,11 +131,14 @@ export default async function AdminLessonsPage({ searchParams }: PageProps) {
                                 {lesson.title}
                               </p>
                               <p className="text-xs font-bold text-neutral-400">
+                                {!content ? "Контент повреждён" : <>
+                                {isPracticeContent(content) ? "практика · " : ""}
                                 {hasTheory ? "теория · " : ""}
                                 {content.questions.length} задан.
                                 {content.bonusQuestions.length > 0
                                   ? ` · ⭐ ${content.bonusQuestions.length}`
                                   : ""}
+                                </>}
                               </p>
                             </div>
                           </div>

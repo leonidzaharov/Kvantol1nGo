@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { computeLessonResume } from "./lesson-resume";
+import { computeLessonResume, practiceSolvedItemIds } from "./lesson-resume";
 
 const base = {
   isCompleted: false,
@@ -104,5 +104,16 @@ describe("computeLessonResume", () => {
       coreTotal: 0,
     });
     expect(r).toMatchObject({ phase: "theory", theoryIndex: 1, resumed: true });
+  });
+});
+
+describe("practiceSolvedItemIds", () => {
+  const items = [{ id: "first" }, { id: "second" }, { id: "third" }];
+  it("restores exact solved IDs with holes and ignores invalid indices", () => {
+    expect(practiceSolvedItemIds(items, { isCompleted: false, answeredCore: [1, 1, -1, 8] })).toEqual(["second"]);
+  });
+  it("starts completed replays fresh and tolerates absent progress", () => {
+    expect(practiceSolvedItemIds(items, { isCompleted: true, answeredCore: [0, 1, 2] })).toEqual([]);
+    expect(practiceSolvedItemIds(items, null)).toEqual([]);
   });
 });

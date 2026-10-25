@@ -5,7 +5,7 @@ $taskRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $taskOutputDir = Join-Path $taskRoot 'deliverables'
 New-Item -ItemType Directory -Force $taskOutputDir | Out-Null
 $taskOutput = Join-Path $taskOutputDir 'quantorium-ubuntu-source.zip'
-$taskNames = @('README.md','package.json','package-lock.json','next.config.ts','prisma.config.ts','tsconfig.json','postcss.config.mjs','eslint.config.mjs','vitest.config.ts','vitest.integration.config.ts','playwright.config.ts','vercel.json','AGENTS.md')
+$taskNames = @('README.md','package.json','package-lock.json','next.config.ts','prisma.config.ts','tsconfig.json','postcss.config.mjs','eslint.config.mjs','vitest.config.ts','vitest.integration.config.ts','playwright.config.ts','AGENTS.md')
 $taskFiles = @($taskNames | ForEach-Object { Get-Item -LiteralPath (Join-Path $taskRoot $_) })
 foreach ($taskDir in @('src','public','prisma','scripts','e2e','deploy')) { $taskFiles += Get-ChildItem -LiteralPath (Join-Path $taskRoot $taskDir) -Recurse -File }
 $taskSecrets = @()

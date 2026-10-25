@@ -1,4 +1,4 @@
-// Быстрая проверка: Prisma-клиент соединяется с Supabase, видит перенесённые
+// Быстрая проверка: Prisma-клиент соединяется с PostgreSQL, видит перенесённые
 // данные, базовые join'ы работают. PinHash не печатаем.
 import "dotenv/config";
 import { prisma } from "../src/lib/db.js";

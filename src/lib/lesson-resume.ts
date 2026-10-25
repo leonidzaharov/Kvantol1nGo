@@ -39,6 +39,16 @@ export type LessonResumeInput = {
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+/** Practice resumes exact solved items, without the classic prefix fallback. */
+export function practiceSolvedItemIds(
+  items: ReadonlyArray<{ id: string }>,
+  progress: { isCompleted: boolean; answeredCore: number[] } | null | undefined,
+): string[] {
+  if (!progress || progress.isCompleted) return [];
+  const solved = new Set(progress.answeredCore);
+  return items.filter((_, index) => solved.has(index)).map((item) => item.id);
+}
+
 export function computeLessonResume({
   isCompleted,
   theoryStep,

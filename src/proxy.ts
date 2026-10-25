@@ -18,8 +18,7 @@ import { authConfig } from './auth.config';
 // Почему 'strict-dynamic': скрипты, которые ДОВЕРЕННЫЙ код создаёт сам
 // (Pyodide из /pyodide, воркеры раннеров), наследуют доверие без
 // перечисления доменов. Внешних скриптов не осталось: Python хостится
-// локально, Supabase и телеметрия Vercel убраны — ходим только на свои
-// origin и на Sentry для отчётов об ошибках.
+// локально; запросы приложения направлены только на свой origin.
 //
 // ВАЖНО: nonce требует рендера страницы на каждый запрос. Статические
 // страницы (пререндер на билде) токена не получат и их скрипты будут
@@ -40,7 +39,7 @@ function buildCsp(nonce: string): string {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "font-src 'self' data:",
-    "connect-src 'self' https://*.ingest.sentry.io https://*.ingest.de.sentry.io",
+    "connect-src 'self'",
     "worker-src 'self' blob:",
     "child-src 'self' blob:",
     // Встраиваемые плееры «Интересного» (card.tsx): YouTube-видео и проекты

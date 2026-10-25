@@ -20,7 +20,7 @@ Next.js App Router + Auth.js + proxy.ts
           │
 Prisma → PostgreSQL (локально на сервере Debian)
           ├─ Локальная папка UPLOADS_DIR (изображения, /media/<имя>)
-          └─ Sentry (отчёты об ошибках, если задан DSN)
+          └─ Журнал Next.js в systemd и консоль браузера
 ```
 
 Python и JavaScript ученика не выполняются на сервере. Python работает через

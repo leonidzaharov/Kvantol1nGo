@@ -14,6 +14,53 @@
 // ============================================================
 
 import { prisma } from "@/lib/db";
+import type { Prisma } from "@/generated/prisma";
+
+export async function lockLessonProgress(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  lessonId: number,
+): Promise<void> {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${lessonId}`}))`;
+}
+
+/** Exact coverage for practice. A count never implies a solved prefix. */
+export function solvedPracticeIndices(indices: number[], total: number): number[] {
+  return [...new Set(indices.filter((index) => Number.isInteger(index) && index >= 0 && index < total))]
+    .sort((a, b) => a - b);
+}
+
+export async function recordPracticeResult(
+  tx: Prisma.TransactionClient,
+  userId: string,
+  lessonId: number,
+  questionIndex: number,
+  totalQuestions: number,
+  correct: boolean,
+): Promise<void> {
+  await lockLessonProgress(tx, userId, lessonId);
+  const existing = await tx.userLessonProgress.findUnique({
+    where: { userId_lessonId: { userId, lessonId } },
+    select: { isCompleted: true, answeredCore: true },
+  });
+  if (existing?.isCompleted) return;
+  const answeredCore = solvedPracticeIndices(existing?.answeredCore ?? [], totalQuestions);
+  if (answeredCore.includes(questionIndex)) return;
+  if (correct) answeredCore.push(questionIndex);
+  answeredCore.sort((a, b) => a - b);
+  await tx.userLessonProgress.upsert({
+    where: { userId_lessonId: { userId, lessonId } },
+    create: {
+      userId, lessonId, totalQuestions, answeredCore,
+      answeredCount: answeredCore.length,
+      wrongAttempts: correct ? 0 : 1,
+    },
+    update: {
+      totalQuestions, answeredCore, answeredCount: answeredCore.length,
+      ...(!correct ? { wrongAttempts: { increment: 1 } } : {}),
+    },
+  });
+}
 
 /**
  * Отмечает задание основной части как решённое (идемпотентно).
@@ -26,13 +73,14 @@ export async function markCoreQuestionSolved(
   lessonId: number,
   questionIndex: number,
   totalQuestions: number,
+  transaction?: Prisma.TransactionClient,
 ): Promise<void> {
   if (questionIndex < 0 || questionIndex >= totalQuestions) return;
 
-  await prisma.$transaction(async (tx) => {
+  const save = async (tx: Prisma.TransactionClient) => {
     // Серийный доступ к строке прогресса пары ученик+урок: два
     // одновременных верных ответа не потеряют индексы друг друга.
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${lessonId}`}))`;
+    await lockLessonProgress(tx, userId, lessonId);
 
     const existing = await tx.userLessonProgress.findUnique({
       where: { userId_lessonId: { userId, lessonId } },
@@ -60,7 +108,9 @@ export async function markCoreQuestionSolved(
       },
       update: { answeredCore, answeredCount, totalQuestions },
     });
-  });
+  };
+  if (transaction) await save(transaction);
+  else await prisma.$transaction(save);
 }
 
 /**
@@ -76,10 +126,16 @@ export function assertCoreSolved(
     | null
     | undefined,
   totalQuestions: number,
+  exact = false,
 ): void {
-  if (totalQuestions === 0) return;
+  if (totalQuestions === 0) {
+    if (exact) throw new Error("LESSON_INCOMPLETE");
+    return;
+  }
   const covered = new Set(progress?.answeredCore ?? []);
-  for (let i = 0; i < (progress?.answeredCount ?? 0); i += 1) covered.add(i);
+  if (!exact) {
+    for (let i = 0; i < Math.min(progress?.answeredCount ?? 0, totalQuestions); i += 1) covered.add(i);
+  }
   for (let i = 0; i < totalQuestions; i += 1) {
     if (!covered.has(i)) throw new Error("LESSON_INCOMPLETE");
   }
