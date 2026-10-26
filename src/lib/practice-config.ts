@@ -11,6 +11,7 @@ export function practiceItemsValid(items: readonly PracticeItem[]): boolean {
     item.variants.every((variant) => {
       if (!variant.prompt.trim() || variant.prompt.length > 3000) return false;
       if (variant.type === "text") return true;
+      if (variant.type === "code") return ["python", "javascript"].includes(variant.language) && variant.starterCode.length <= 10000;
       if (variant.type === "choice") return variant.options.length >= 2 && variant.options.length <= 8 &&
         variant.options.every((option) => option.trim().length > 0 && option.length <= 300);
       return variant.left.length >= 2 && variant.left.length <= 8 &&

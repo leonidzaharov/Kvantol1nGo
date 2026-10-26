@@ -19,6 +19,7 @@ export function createPracticeVariant(
   const base = { id: nextId(), prompt: "", explanation: "" };
   if (type === "text") return { ...base, type, correctAnswer: "" };
   if (type === "choice") return { ...base, type, options: ["", ""], correctIndex: 0 };
+  if (type === "code") return { ...base, type, language: "python", starterCode: "", expectedOutput: "", referenceSolution: "" };
   const left = [{ id: nextId(), label: "" }, { id: nextId(), label: "" }];
   const right = [{ id: nextId(), label: "" }, { id: nextId(), label: "" }];
   return {

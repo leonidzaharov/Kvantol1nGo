@@ -73,6 +73,26 @@ describe("parseResourceInput", () => {
     sortOrder: "0",
   };
 
+  it("stores a virtual practice as an internal article without a second reward", () => {
+    expect(parseResourceInput({ ...base, type: "practice", url: "/lesson/00042/", coinReward: "999999" })).toEqual({
+      ok: true, data: {
+        type: "article", title: "Заголовок", description: null, url: "/lesson/42",
+        body: null, coinReward: 0, sortOrder: 0,
+      },
+    });
+  });
+
+  it("does not allow a stored practice URL to bypass its reward rule using article type", () => {
+    const result = parseResourceInput({ ...base, type: "article", url: "/lesson/42", coinReward: "20" });
+    expect(result).toMatchObject({ ok: true, data: { type: "article", url: "/lesson/42", coinReward: 0 } });
+  });
+
+  it("rejects missing, external and malformed practice destinations", () => {
+    for (const url of ["", "42", "/lesson/0", "/lesson/42/preview", "https://example.org/lesson/42"]) {
+      expect(parseResourceInput({ ...base, type: "practice", url }).ok).toBe(false);
+    }
+  });
+
   it("видео: нормализует полную ссылку до ID", () => {
     const r = parseResourceInput({
       ...base,

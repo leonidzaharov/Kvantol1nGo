@@ -9,15 +9,17 @@
 import { z } from "zod";
 
 import type { ResourceType } from "@/generated/prisma";
+import { parsePracticeLessonId, type ResourceFormType } from "./resource-practice";
 
 // Дополнительный материал: 2 монеты при курсе 20 монет = 1 пиксель.
 // Начисление однократное. Основная награда — за завершение уроков.
 // Форма админки подставляет их при выборе типа, но значение можно поменять.
-export const DEFAULT_COIN_REWARD: Record<ResourceType, number> = {
+export const DEFAULT_COIN_REWARD: Record<ResourceFormType, number> = {
   note: 2,
   scratch: 2,
   video: 2,
   article: 2,
+  practice: 0,
 };
 
 // Наставник вставляет ссылку на видео как удобно — полную или уже ID.
@@ -66,7 +68,7 @@ export function extractScratchId(raw: string): string | null {
 }
 
 const BaseSchema = z.object({
-  type: z.enum(["scratch", "video", "article", "note"]),
+  type: z.enum(["scratch", "video", "article", "note", "practice"]),
   title: z.string().trim().min(1).max(120),
   description: z.string().trim().max(300),
   url: z.string().trim().max(2000),
@@ -105,7 +107,9 @@ export function parseResourceInput(raw: {
   coinReward: unknown;
   sortOrder: unknown;
 }): ParseResult {
-  const parsed = BaseSchema.safeParse(raw);
+  const linkedPractice = raw.type === "practice" ||
+    (raw.type === "article" && parsePracticeLessonId(raw.url) !== null);
+  const parsed = BaseSchema.safeParse(linkedPractice ? { ...raw, coinReward: 0 } : raw);
   if (!parsed.success) {
     return {
       ok: false,
@@ -117,7 +121,7 @@ export function parseResourceInput(raw: {
     parsed.data;
 
   const base = {
-    type,
+    type: type === "practice" ? "article" as const : type,
     title,
     description: description || null,
     url: null as string | null,
@@ -127,6 +131,11 @@ export function parseResourceInput(raw: {
   };
 
   switch (type) {
+    case "practice": {
+      const lessonId = parsePracticeLessonId(url);
+      if (lessonId === null) return { ok: false, error: "Для практики нужна ссылка на сохранённый урок вида /lesson/123." };
+      return { ok: true, data: { ...base, type: "article", url: `/lesson/${lessonId}`, coinReward: 0 } };
+    }
     case "video": {
       const id = extractYouTubeId(url);
       if (!id) {
@@ -152,6 +161,8 @@ export function parseResourceInput(raw: {
     }
 
     case "article": {
+      const lessonId = parsePracticeLessonId(url);
+      if (lessonId !== null) return { ok: true, data: { ...base, url: `/lesson/${lessonId}`, coinReward: 0 } };
       let link: URL;
       try {
         link = new URL(url);

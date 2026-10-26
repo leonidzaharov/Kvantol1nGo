@@ -1,7 +1,10 @@
-import { ExternalLink, Lightbulb, Play, Puzzle, type LucideIcon } from "lucide-react";
+import Link from "next/link";
+import { BookOpen, CheckCircle2, ExternalLink, Lightbulb, Play, Puzzle, type LucideIcon } from "lucide-react";
 
 import type { Resource, ResourceType } from "@/generated/prisma";
 import { cn } from "@/lib/utils";
+import { resourcePracticeLessonId } from "@/lib/resource-practice";
+import { Button } from "@/components/ui/button";
 
 import { StudyButton } from "./study-button";
 
@@ -17,14 +20,25 @@ const TYPE_META: Record<ResourceType, { icon: LucideIcon; label: string; color: 
 // карточки растягиваем на 2 колонки на десктопе.
 const isEmbed = (type: ResourceType) => type === "video" || type === "scratch";
 
+export type PracticeLinkState = {
+  available: boolean;
+  completed: boolean;
+  coinReward: number;
+  preview: boolean;
+  error?: string;
+};
+
 export function ResourceCard({
   resource,
   studied,
+  practice,
 }: {
   resource: Resource;
   studied: boolean;
+  practice?: PracticeLinkState;
 }) {
-  const meta = TYPE_META[resource.type];
+  const lessonId = resourcePracticeLessonId(resource);
+  const meta = lessonId === null ? TYPE_META[resource.type] : { icon: BookOpen, label: "Практика", color: "bg-purple-500" };
   const Icon = meta.icon;
 
   return (
@@ -58,13 +72,30 @@ export function ResourceCard({
         <p className="mb-3 text-sm text-neutral-500">{resource.description}</p>
       )}
 
-      <CardBody resource={resource} />
-
-      <StudyButton
+      {lessonId !== null ? (
+        practice?.available ? <div className="mt-auto space-y-3">
+          {practice.completed && <p className="flex items-center gap-2 text-sm font-bold text-green-600"><CheckCircle2 className="h-4 w-4" />Пройдено</p>}
+          <p className="text-sm text-neutral-500">
+            {practice.preview ? "Предпросмотр не меняет прогресс и монеты."
+              : practice.completed ? "Повторение без повторной награды."
+                : practice.coinReward > 0 ? `${practice.coinReward} монет за первое прохождение.` : "Практика без монет."}
+          </p>
+          <Button variant="secondary" size="sm" asChild>
+            <Link prefetch={false} href={practice.preview ? `/lesson/${lessonId}/preview` : `/lesson/${lessonId}`}>
+              {practice.preview ? "Предпросмотр практики" : practice.completed ? "Повторить практику" : "Пройти практику"}
+            </Link>
+          </Button>
+        </div> : <p role="status" className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
+          {practice?.error ?? "Связанная практика пока недоступна."}
+        </p>
+      ) : <>
+        <CardBody resource={resource} />
+        <StudyButton
         resourceId={resource.id}
         coinReward={resource.coinReward}
         studied={studied}
-      />
+        />
+      </>}
     </article>
   );
 }

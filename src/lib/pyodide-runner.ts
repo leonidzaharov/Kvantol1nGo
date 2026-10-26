@@ -1,96 +1,120 @@
 "use client";
 
-// ============================================================
-// Запуск Python в браузере через Pyodide (CPython на WebAssembly).
-//
-// Файлы (~12 МБ) отдаём со своего сервера из /pyodide — их кладёт туда
-// postinstall (scripts/copy-pyodide.mjs) из пакета pyodide. Внешний CDN
-// не нужен: уроки с Python работают и без интернета на jsdelivr.
-// ============================================================
+import { MAX_PRACTICE_OUTPUT } from "./practice-types";
 
-const PYODIDE_BASE = "/pyodide/";
+const LOAD_TIMEOUT_MS = 45_000;
+const RUN_TIMEOUT_MS = 3_000;
+const LOAD_ERROR = "Не удалось загрузить Python. Проверь соединение и повтори запуск.";
 
-// Минимальный интерфейс той части Pyodide, которой мы пользуемся.
-type Pyodide = {
-  runPythonAsync(code: string): Promise<unknown>;
-  setStdout(options: { batched: (line: string) => void }): void;
-  setStderr(options: { batched: (line: string) => void }): void;
+export type RunResult = { output: string; ok: boolean };
+type PendingRun = {
+  id: number;
+  timer: ReturnType<typeof setTimeout>;
+  resolve: (result: RunResult) => void;
+  reject: (error: Error) => void;
+};
+type PythonWorker = {
+  worker: Worker;
+  ready: Promise<void>;
+  resolveReady: () => void;
+  rejectReady: (error: Error) => void;
+  loadingTimer: ReturnType<typeof setTimeout> | null;
+  loaded: boolean;
+  pending: PendingRun | null;
 };
 
-declare global {
-  interface Window {
-    loadPyodide?: (options: { indexURL: string }) => Promise<Pyodide>;
+let current: PythonWorker | null = null;
+let nextId = 0;
+let queue: Promise<void> = Promise.resolve();
+
+function reset(state: PythonWorker, error: Error) {
+  if (current !== state) return;
+  current = null;
+  if (state.loadingTimer !== null) clearTimeout(state.loadingTimer);
+  if (!state.loaded) state.rejectReady(error);
+  if (state.pending) {
+    clearTimeout(state.pending.timer);
+    state.pending.reject(error);
+    state.pending = null;
   }
+  state.worker.onmessage = null;
+  state.worker.onerror = null;
+  state.worker.onmessageerror = null;
+  state.worker.terminate();
 }
 
-let pyodidePromise: Promise<Pyodide> | null = null;
-
-function injectScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.loadPyodide) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = PYODIDE_BASE + "pyodide.js";
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(new Error("Не удалось загрузить Python. Проверь интернет."));
-    document.head.appendChild(script);
-  });
-}
-
-/** Однократная инициализация Pyodide (все задания делят один интерпретатор). */
-export function getPyodide(): Promise<Pyodide> {
-  if (!pyodidePromise) {
-    pyodidePromise = injectScript().then(() => {
-      if (!window.loadPyodide) {
-        throw new Error("Pyodide не инициализировался");
-      }
-      return window.loadPyodide({ indexURL: PYODIDE_BASE });
-    });
-    // Неудачную загрузку не кэшируем — следующая попытка начнёт заново.
-    pyodidePromise.catch(() => {
-      pyodidePromise = null;
-    });
-  }
-  return pyodidePromise;
-}
-
-export type RunResult = {
-  /** Всё, что программа напечатала (stdout, а при ошибке — и текст ошибки). */
-  output: string;
-  /** true — выполнилось без исключений. */
-  ok: boolean;
-};
-
-/**
- * Выполнить код ученика и собрать вывод print'ов. Ошибки Python не
- * пробрасываются наружу — возвращаются текстом в output, чтобы ученик
- * видел, что пошло не так.
- */
-export async function runPython(code: string): Promise<RunResult> {
-  const pyodide = await getPyodide();
-  const lines: string[] = [];
-  pyodide.setStdout({ batched: (line) => lines.push(line) });
-  pyodide.setStderr({ batched: (line) => lines.push(line) });
-
+/** Lazily warm one worker. A failed load never poisons the next attempt. */
+export function getPyodide(): Promise<void> {
+  if (current) return current.ready;
+  let worker: Worker;
   try {
-    await pyodide.runPythonAsync(code);
-    return { output: lines.join("\n"), ok: true };
-  } catch (err) {
-    // Показываем последнюю строку traceback'а — саму суть ошибки
-    // (например «NameError: name 'x' is not defined»), без простыни.
-    const message = err instanceof Error ? err.message : String(err);
-    const gist =
-      message
-        .trim()
-        .split("\n")
-        .filter((l) => l.trim() !== "")
-        .pop() ?? "Ошибка выполнения";
-    return {
-      output: [...lines, gist].join("\n"),
-      ok: false,
-    };
+    worker = new Worker("/pyodide-worker.js");
+  } catch {
+    return Promise.reject(new Error(LOAD_ERROR));
   }
+  let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
+  const ready = new Promise<void>((resolve, reject) => {
+    resolveReady = resolve;
+    rejectReady = reject;
+  });
+  const state: PythonWorker = { worker, ready, resolveReady, rejectReady, loadingTimer: null, loaded: false, pending: null };
+  current = state;
+  state.loadingTimer = setTimeout(() => reset(state, new Error(LOAD_ERROR)), LOAD_TIMEOUT_MS);
+  worker.onerror = () => reset(state, new Error("Python остановился. Повтори запуск."));
+  worker.onmessageerror = () => reset(state, new Error("Не удалось получить результат Python. Повтори запуск."));
+  worker.onmessage = (event: MessageEvent<unknown>) => {
+    if (current !== state || !event.data || typeof event.data !== "object") return;
+    const message = event.data as Record<string, unknown>;
+    if (message.type === "ready" && !state.loaded) {
+      if (state.loadingTimer !== null) clearTimeout(state.loadingTimer);
+      state.loadingTimer = null;
+      state.loaded = true;
+      state.resolveReady();
+    } else if (message.type === "load-error" || message.type === "fatal") {
+      reset(state, new Error(LOAD_ERROR));
+    } else if ((message.type === "result" || message.type === "output-limit") && state.pending && state.pending.id === message.id) {
+      if (typeof message.ok !== "boolean" || typeof message.output !== "string") {
+        reset(state, new Error("Python вернул некорректный результат. Повтори запуск."));
+        return;
+      }
+      const pending = state.pending;
+      state.pending = null;
+      clearTimeout(pending.timer);
+      pending.resolve({ ok: message.type === "result" && message.ok, output: message.output.slice(0, MAX_PRACTICE_OUTPUT) });
+      if (message.type === "output-limit") reset(state, new Error("Превышен предел вывода Python."));
+    }
+  };
+  try {
+    worker.postMessage({ type: "load" });
+  } catch {
+    reset(state, new Error(LOAD_ERROR));
+  }
+  return ready;
+}
+
+/** Runtime mistakes resolve; worker/network failures reject without grading. */
+export function runPython(code: string): Promise<RunResult> {
+  const task = queue.then(async () => {
+    await getPyodide();
+    const state = current;
+    if (!state?.loaded) throw new Error(LOAD_ERROR);
+    return new Promise<RunResult>((resolve, reject) => {
+      const id = ++nextId;
+      const timer = setTimeout(() => {
+        if (current !== state || state.pending?.id !== id) return;
+        state.pending = null;
+        resolve({ ok: false, output: "Программа выполнялась слишком долго. Проверь условие цикла и изменение переменных внутри него." });
+        reset(state, new Error("Время выполнения Python истекло."));
+      }, RUN_TIMEOUT_MS);
+      state.pending = { id, resolve, reject, timer };
+      try {
+        state.worker.postMessage({ type: "run", id, code });
+      } catch {
+        reset(state, new Error("Не удалось запустить Python. Повтори запуск."));
+      }
+    });
+  });
+  queue = task.then(() => undefined, () => undefined);
+  return task;
 }

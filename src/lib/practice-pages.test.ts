@@ -52,6 +52,19 @@ describe("practice route integration", () => {
     expect(JSON.stringify(page.props)).not.toContain("SECRET_");
   });
 
+  it("routes Python practice to the new runner without initial code solutions or expected output", async () => {
+    const codePractice: StoredPracticeContent = { ...practice, questions: [{ id: "python", variants: ["first", "second"].map((id) => ({
+      id, type: "code", language: "python", prompt: "Исправь цикл", starterCode: "print(students)",
+      referenceSolution: "SECRET_CODE_SOLUTION", expectedOutput: "SECRET_OUTPUT", explanation: "SECRET_EXPLANATION",
+    })) }] };
+    mocks.find.mockResolvedValue({ id: 42, title: "Python", content: JSON.stringify(codePractice), isPublished: true });
+    const page = await LessonPage(request) as ReactElement<Props>;
+    expect(page.type).toBe(mocks.Practice);
+    const serialized = JSON.stringify(page.props);
+    expect(serialized).toContain("print(students)");
+    for (const privateField of ["SECRET_", "expectedOutput", "referenceSolution", "explanation"]) expect(serialized).not.toContain(privateField);
+  });
+
   it("starts completed lessons as unpaid fresh practice without old answers", async () => {
     mocks.progress.mockResolvedValue({ isCompleted: true, answeredCore: [0, 1], answeredCount: 2, theoryStep: 10 });
     const page = await LessonPage(request) as ReactElement<Props>;

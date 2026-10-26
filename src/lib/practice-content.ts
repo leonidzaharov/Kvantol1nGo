@@ -1,8 +1,10 @@
 import { z } from "zod";
 
-import { normalizeLessonImages, normalizeTheoryHtml } from "./lesson-content";
+import { CODE_LANGUAGES, normalizeLessonImages, normalizeTheoryHtml } from "./lesson-content";
 import { matchingAnswerComplete } from "./matching-pairs";
+import { outputsMatch } from "./output-match";
 import { textAnswersMatch } from "./text-answer";
+import { MAX_PRACTICE_OUTPUT } from "./practice-types";
 import type { PracticeCheckResult, PracticeItem } from "./practice-types";
 
 export const MAX_PRACTICE_BYTES = 256 * 1024;
@@ -31,6 +33,15 @@ const StoredTextVariantSchema = z.object({
   correctAnswer: z.string().trim().min(1).max(1000),
 }).strict();
 
+const StoredCodeVariantSchema = z.object({
+  ...variantBase,
+  type: z.literal("code"),
+  language: z.enum(CODE_LANGUAGES).default("python"),
+  starterCode: z.string().max(10000).default(""),
+  expectedOutput: z.string().max(3000),
+  referenceSolution: z.string().trim().min(1).max(10000),
+}).strict();
+
 const StoredMatchingVariantSchema = z.object({
   ...variantBase,
   type: z.literal("match"),
@@ -50,6 +61,7 @@ const StoredMatchingVariantSchema = z.object({
 export const StoredPracticeVariantSchema = z.discriminatedUnion("type", [
   StoredChoiceVariantSchema,
   StoredTextVariantSchema,
+  StoredCodeVariantSchema,
   StoredMatchingVariantSchema,
 ]);
 
@@ -97,6 +109,7 @@ export function sanitizePracticeContent(content: StoredPracticeContent): SafePra
       const base = { id: variant.id, prompt: variant.prompt };
       if (variant.type === "choice") return { ...base, type: "choice", options: [...variant.options] };
       if (variant.type === "text") return { ...base, type: "text" };
+      if (variant.type === "code") return { ...base, type: "code", language: variant.language, starterCode: variant.starterCode };
       return {
         ...base,
         type: "match",
@@ -111,6 +124,7 @@ export function sanitizePracticeContent(content: StoredPracticeContent): SafePra
 export const PracticeAnswerSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("choice"), optionIndex: z.number().int().min(0).max(7) }).strict(),
   z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(1000) }).strict(),
+  z.object({ type: z.literal("code"), executionOk: z.boolean(), output: z.string().max(MAX_PRACTICE_OUTPUT) }).strict(),
   z.object({ type: z.literal("match"), pairs: z.array(PairSchema).min(2).max(8) }).strict(),
 ]);
 
@@ -141,6 +155,20 @@ export function gradePracticeVariant(variant: StoredPracticeVariant, rawAnswer: 
       kind: "checked",
       correct: textAnswersMatch(answer.text, variant.correctAnswer),
       feedback: { answer: variant.correctAnswer, explanation: variant.explanation },
+    };
+  }
+  if (variant.type === "code" && answer.type === "code") {
+    // Execution happens in the browser, as in classic code lessons. The server
+    // compares its bounded result with the private expected output, not a passed flag.
+    return {
+      kind: "checked",
+      correct: answer.executionOk && outputsMatch(answer.output, variant.expectedOutput),
+      feedback: {
+        answer: variant.referenceSolution,
+        explanation: variant.explanation,
+        codeLanguage: variant.language,
+        expectedOutput: variant.expectedOutput,
+      },
     };
   }
   if (variant.type === "match" && answer.type === "match") {

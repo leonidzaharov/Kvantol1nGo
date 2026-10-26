@@ -3,8 +3,10 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
+import { lessonIsAccessible } from "@/lib/course-access-logic";
+import { resourcePracticeLessonId } from "@/lib/resource-practice";
 
-import { ResourceCard } from "./card";
+import { ResourceCard, type PracticeLinkState } from "./card";
 
 export default async function InterestingPage() {
   const session = await auth();
@@ -14,7 +16,7 @@ export default async function InterestingPage() {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { isAdmin: true, groupId: true },
+    select: { isAdmin: true, groupId: true, group: { select: { track: true } } },
   });
   if (!user) redirect("/");
 
@@ -39,6 +41,38 @@ export default async function InterestingPage() {
     }),
   ]);
   const studiedIds = new Set(studiedRows.map((r) => r.resourceId));
+  const lessonIds = [...new Set(resources.flatMap((resource) => {
+    const id = resourcePracticeLessonId(resource);
+    return id === null ? [] : [id];
+  }))];
+  // One metadata query for every linked card. The lesson document is not loaded here.
+  const linkedLessons = lessonIds.length === 0 ? [] : await prisma.lesson.findMany({
+    where: { id: { in: lessonIds } },
+    select: {
+      id: true, coinReward: true, isPublished: true,
+      groupRestrictions: { select: { groupId: true } },
+      category: { select: { isPublished: true, track: true, groupAccess: { select: { groupId: true } } } },
+      progress: { where: { userId: session.user.id }, select: { isCompleted: true }, take: 1 },
+    },
+  });
+  const lessonsById = new Map(linkedLessons.map((lesson) => [lesson.id, lesson]));
+  const context = { isAdmin: user.isAdmin, groupId: user.groupId, track: user.group?.track ?? null };
+  const visibleResources = resources.flatMap<{ resource: (typeof resources)[number]; practice?: PracticeLinkState }>((resource) => {
+    const lessonId = resourcePracticeLessonId(resource);
+    if (lessonId === null) return [{ resource, practice: undefined }];
+    const lesson = lessonsById.get(lessonId);
+    const available = lesson !== undefined && lessonIsAccessible(context, {
+      isPublished: lesson.isPublished,
+      restrictedGroupIds: lesson.groupRestrictions.map((item) => item.groupId),
+      category: { ...lesson.category, groupIds: lesson.category.groupAccess.map((item) => item.groupId) },
+    });
+    if (!available && !user.isAdmin) return [];
+    return [{ resource, practice: {
+      available, completed: lesson?.progress[0]?.isCompleted ?? false,
+      coinReward: lesson?.coinReward ?? 0, preview: user.isAdmin,
+      ...(!lesson ? { error: "Связанный урок удалён или ссылка неверна. Проверь материал в админке." } : {}),
+    } }];
+  });
 
   return (
     <div className="px-3">
@@ -54,17 +88,18 @@ export default async function InterestingPage() {
           Видео, проекты и ссылки, чтобы пробовать новое за пределами уроков.
         </p>
 
-        {resources.length === 0 ? (
+        {visibleResources.length === 0 ? (
           <p className="mt-6 rounded-2xl border-2 border-dashed border-neutral-200 px-6 py-10 text-center text-neutral-400">
             Пока тут пусто — материалы скоро появятся.
           </p>
         ) : (
           <div className="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
-            {resources.map((resource) => (
+            {visibleResources.map(({ resource, practice }) => (
               <ResourceCard
                 key={resource.id}
                 resource={resource}
                 studied={studiedIds.has(resource.id)}
+                practice={practice}
               />
             ))}
           </div>

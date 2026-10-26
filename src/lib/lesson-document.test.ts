@@ -9,6 +9,13 @@ const practice = {
     { id: "b", type: "text", prompt: "Назови число", correctAnswer: "2", explanation: "Получилось два." },
   ] }],
 };
+const codePractice = {
+  format: "practice-v1", theory: "# Код", questions: [{ id: "loops", variants: ["first", "second"].map((id) => ({
+    id, type: "code", language: "python", starterCode: 'for student in ["Мира", "Тео"]:\n    print(students)',
+    expectedOutput: "Мира\nТео", referenceSolution: 'for student in ["Мира", "Тео"]:\n    print(student)',
+    prompt: "Исправь имя переменной внутри цикла.", explanation: "student получает текущее имя на каждом шаге.",
+  })) }], bonusQuestions: [],
+};
 
 describe("parseLessonDocument", () => {
   it("retains classic missing-type questions and code defaults", () => {
@@ -16,6 +23,12 @@ describe("parseLessonDocument", () => {
     expect(parsed?.questions).toHaveLength(2);
     expect(parsed?.questions[1]).toMatchObject({ type: "code", language: "python", starterCode: "" });
     expect(parsed && isPracticeContent(parsed)).toBe(false);
+  });
+
+  it("reads stored code practice without downgrading it to classic", () => {
+    const parsed = parseLessonDocument(JSON.stringify(codePractice));
+    expect(parsed && isPracticeContent(parsed)).toBe(true);
+    expect(parsed).toEqual(codePractice);
   });
 
   it("recognises practice without downgrading unknown or damaged versions", () => {
@@ -48,6 +61,14 @@ describe("parseLessonQuestionsImport", () => {
     expect(parseLessonQuestionsImport(practice)).toEqual({ ...practice, bonusQuestions: [] });
   });
 
+  it("roundtrips code programs, empty expected output and teaching feedback through JSON", () => {
+    const withSilentVariant = structuredClone(codePractice);
+    withSilentVariant.questions[0].variants[1].expectedOutput = "";
+    withSilentVariant.questions[0].variants[1].referenceSolution = "pass";
+    const imported = parseLessonQuestionsImport(JSON.parse(JSON.stringify(withSilentVariant)));
+    expect(imported).toEqual({ format: "practice-v1", questions: withSilentVariant.questions, bonusQuestions: [] });
+  });
+
   it("fails explicitly instead of stripping versioned fields or clearing questions", () => {
     for (const input of [{ ...practice, format: "future" }, { ...practice, questions: [classicQuestion] }, null, {}, []]) {
       expect(() => parseLessonQuestionsImport(input)).toThrow();
@@ -67,6 +88,14 @@ describe("parseLessonMarkdown", () => {
     expect(parsed.theory).toContain("![Карточка](images/a.png)");
     expect(parsed.theory).toContain("## Подсказка");
     for (const secret of ["correctAnswer", "correctIndex", "explanation", "kvantolingo"]) expect(parsed.theory).not.toContain(secret);
+  });
+
+  it("extracts code variants and preserves their source while keeping solutions out of theory", () => {
+    const md = `# Циклы\n\n\`\`\`kvantolingo\n${JSON.stringify(codePractice)}\n\`\`\`\n\nТеперь попробуй.`;
+    const imported = parseLessonMarkdown(md);
+    expect(imported.questionImport).toEqual({ format: "practice-v1", questions: codePractice.questions, bonusQuestions: [] });
+    expect(imported.theory).toBe("# Циклы\n\n\nТеперь попробуй.");
+    for (const privateField of ["referenceSolution", "expectedOutput", "explanation"]) expect(imported.theory).not.toContain(privateField);
   });
 
   it("supports classic embedded questions and Markdown fence length rules", () => {

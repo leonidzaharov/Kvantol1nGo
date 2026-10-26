@@ -28,7 +28,7 @@ export function runCode(
 
 /**
  * Начать прогрев движка заранее (пока ученик читает теорию). Тяжёлый только
- * Python — его интерпретатор (~10 МБ) тянется с CDN; JavaScript греть нечего.
+ * Python загружается со своего сайта в отдельный worker; JavaScript греть нечего.
  */
 export function prewarmCode(language: CodeLanguage): void {
   if (language === "python") {

@@ -3,19 +3,21 @@
 import { useActionState, useState } from "react";
 import Link from "next/link";
 
-import type { Resource, ResourceType } from "@/generated/prisma";
+import type { Resource } from "@/generated/prisma";
 import { saveResource, type ResourceFormState } from "@/lib/actions/resources";
 import { DEFAULT_COIN_REWARD } from "@/lib/resource-input";
+import { resourceFormType, type ResourceFormType } from "@/lib/resource-practice";
 import { Button } from "@/components/ui/button";
 
 import { TYPE_LABELS } from "./type-labels";
 
 // Подсказка под полем «Ссылка» — своя на каждый тип.
-const URL_HINTS: Record<ResourceType, string | null> = {
+const URL_HINTS: Record<ResourceFormType, string | null> = {
   video: "Вставь ссылку на YouTube-видео (или сам ID) — приведём к нужному виду.",
   scratch: "Вставь ссылку scratch.mit.edu/projects/… (или номер проекта).",
   article: "Полный адрес, начинается с https://",
   note: null, // у совета ссылки нет — вместо неё текст
+  practice: "Ссылка на сохранённую практику вида /lesson/123. Награда настраивается в самом уроке.",
 };
 
 const inputClass =
@@ -43,7 +45,7 @@ export const ResourceForm = ({
     FormData
   >(saveResource, null);
   // Тип выбран в селекте — от него зависит, показывать «Ссылку» или «Текст».
-  const [type, setType] = useState<ResourceType>(resource?.type ?? "video");
+  const [type, setType] = useState<ResourceFormType>(resource ? resourceFormType(resource) : "video");
 
   return (
     <form action={formAction} className="flex w-full flex-col gap-y-4">
@@ -54,10 +56,10 @@ export const ResourceForm = ({
         <select
           name="type"
           value={type}
-          onChange={(e) => setType(e.target.value as ResourceType)}
+          onChange={(e) => setType(e.target.value as ResourceFormType)}
           className={inputClass}
         >
-          {(Object.keys(TYPE_LABELS) as ResourceType[]).map((value) => (
+          {(Object.keys(TYPE_LABELS) as ResourceFormType[]).map((value) => (
             <option key={value} value={value}>
               {TYPE_LABELS[value]}
             </option>
@@ -156,7 +158,12 @@ export const ResourceForm = ({
         <input type="hidden" name="body" value="" />
       )}
 
-      <label className="flex flex-col gap-y-1.5">
+      {type === "practice" ? <>
+        <input type="hidden" name="coinReward" value="0" />
+        <p className="rounded-xl bg-sky-50 p-3 text-sm text-sky-800">
+          Монеты выдаются за первое прохождение связанного урока. У карточки нет отдельной награды за «Изучил».
+        </p>
+      </> : <label className="flex flex-col gap-y-1.5">
         <span className="font-bold text-neutral-700">Монеты за «Изучил»</span>
         <input
           // key=type: при смене типа в форме СОЗДАНИЯ поле пересоздаётся
@@ -173,7 +180,7 @@ export const ResourceForm = ({
         <span className="text-sm text-neutral-400">
           Начисляются ученику один раз — при нажатии «Изучил» на карточке.
         </span>
-      </label>
+      </label>}
 
       <label className="flex flex-col gap-y-1.5">
         <span className="font-bold text-neutral-700">Порядок</span>

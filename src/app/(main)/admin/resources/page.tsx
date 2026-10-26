@@ -4,6 +4,7 @@ import { Plus, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/db";
 import { requireAdminOr404 } from "@/lib/server-guard";
+import { resourceFormType } from "@/lib/resource-practice";
 
 import { AdminNav } from "../admin-nav";
 import { DeleteButton } from "./delete-button";
@@ -13,8 +14,9 @@ import { toggleResourcePublication } from "@/lib/actions/resources";
 
 // Админка «Интересного»: список материалов + добавление/правка/удаление.
 // Доступ только наставнику (isAdmin) — остальным 404.
-export default async function AdminResourcesPage() {
+export default async function AdminResourcesPage({ searchParams }: { searchParams?: Promise<{ error?: string }> }) {
   await requireAdminOr404();
+  const error = (await searchParams)?.error?.slice(0, 300);
 
   // Та же сортировка, что на /interesting, — админ видит список 1-в-1.
   const resources = await prisma.resource.findMany({
@@ -36,6 +38,7 @@ export default async function AdminResourcesPage() {
             Материалы, которые ученики видят на странице «Интересное».
           </p>
           <AdminNav active="resources" />
+          {error && <p role="alert" className="mt-4 rounded-xl bg-rose-50 p-4 text-rose-700">{error}</p>}
           <div className="mt-4">
             <Button variant="secondary" asChild>
               <Link href="/admin/resources/new">
@@ -62,7 +65,7 @@ export default async function AdminResourcesPage() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <span className="text-xs font-bold uppercase tracking-wide text-neutral-400">
-                    {TYPE_LABELS[resource.type]}
+                    {TYPE_LABELS[resourceFormType(resource)]}
                   </span>
                   <p className="truncate font-bold text-neutral-700">
                     {resource.title}

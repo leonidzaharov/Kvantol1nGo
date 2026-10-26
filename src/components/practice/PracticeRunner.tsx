@@ -3,10 +3,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { Challenge } from "@/app/lesson/[id]/challenge";
+import { CodeChallenge } from "@/app/lesson/[id]/code-challenge";
 import { TextChallenge } from "@/app/lesson/[id]/text-challenge";
 import { Button } from "@/components/ui/button";
 import { matchingAnswerComplete } from "@/lib/matching-pairs";
 import { practiceItemsValid } from "@/lib/practice-config";
+import { MAX_PRACTICE_OUTPUT } from "@/lib/practice-types";
+import type { RunResult } from "@/lib/code-runner";
 import {
   advancePractice,
   beginPracticeCheck,
@@ -116,26 +119,65 @@ type StepProps = {
   result: Extract<PracticeCheckResult, { kind: "checked" }> | null;
   error?: string;
   stale: boolean;
-  onCheck: (answer: PracticeAnswer) => void;
+  onCheck: (answer: PracticeAnswer) => Promise<void>;
   onContinue: () => void;
 };
 
 function PracticeStep({ item, variant, repeat, shuffleSeed, checking, result, error, stale, onCheck, onContinue }: StepProps) {
   const [answer, setAnswer] = useState<PracticeAnswer>(() => variant.type === "text"
     ? { type: "text", text: "" } : variant.type === "match"
-      ? { type: "match", pairs: [] } : { type: "choice", optionIndex: -1 });
+      ? { type: "match", pairs: [] } : variant.type === "code"
+        ? { type: "code", executionOk: false, output: "" } : { type: "choice", optionIndex: -1 });
+  const [code, setCode] = useState(() => variant.type === "code" ? variant.starterCode : "");
+  const [execution, setExecution] = useState<RunResult | null>(null);
+  const [running, setRunning] = useState(false);
+  const [runError, setRunError] = useState<string | null>(null);
+  const executing = useRef(false);
+  const mounted = useRef(true);
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
-  const locked = checking || result !== null || stale;
-  const ready = answer.type === "text" ? answer.text.trim().length > 0
+  useEffect(() => {
+    mounted.current = true;
+    heading.current?.focus();
+    return () => { mounted.current = false; };
+  }, []);
+  const locked = running || checking || result !== null || stale;
+  const ready = variant.type === "code" ? code.trim().length > 0 : answer.type === "text" ? answer.text.trim().length > 0
     : answer.type === "choice" ? answer.optionIndex >= 0
-      : variant.type === "match" && matchingAnswerComplete(variant.left, variant.right, answer.pairs);
+      : variant.type === "match" && answer.type === "match" && matchingAnswerComplete(variant.left, variant.right, answer.pairs);
+
+  async function submitCode() {
+    if (variant.type !== "code" || locked || !ready || executing.current) return;
+    executing.current = true;
+    setRunning(true);
+    setRunError(null);
+    try {
+      const { runCode } = await import("@/lib/code-runner");
+      const execution = await runCode(variant.language, code);
+      if (!mounted.current) return;
+      const output = execution.output.slice(0, MAX_PRACTICE_OUTPUT);
+      const executionOk = execution.ok && execution.output.length <= MAX_PRACTICE_OUTPUT;
+      setExecution({ ok: executionOk, output });
+      setRunning(false);
+      await onCheck({ type: "code", executionOk, output });
+    } catch {
+      if (mounted.current) setRunError("Не удалось запустить программу. Код сохранён на экране. Попробуй ещё раз.");
+    } finally {
+      executing.current = false;
+      if (mounted.current) setRunning(false);
+    }
+  }
   return (
     <div className="space-y-5">
       {repeat && <p className="text-sm font-bold text-sky-700">Другой пример на тот же навык</p>}
       {item.intro && <p className="whitespace-pre-wrap rounded-xl bg-sky-50 p-4 text-neutral-700">{item.intro}</p>}
       <h2 ref={heading} tabIndex={-1} className="whitespace-pre-wrap text-xl font-bold break-words text-neutral-700 outline-none">{variant.prompt}</h2>
-      <form onSubmit={(event) => { event.preventDefault(); if (!locked && ready) onCheck(answer); }} className="space-y-5">
+      <form onSubmit={(event) => {
+        event.preventDefault();
+        if (!locked && ready) {
+          if (variant.type === "code") void submitCode();
+          else void onCheck(answer);
+        }
+      }} className="space-y-5">
         {variant.type === "choice" && answer.type === "choice" && (
           <Challenge options={variant.options} selectedOption={answer.optionIndex < 0 ? undefined : answer.optionIndex}
             onSelect={(optionIndex) => setAnswer({ type: "choice", optionIndex })} status="none" disabled={locked} />
@@ -148,8 +190,18 @@ function PracticeStep({ item, variant, repeat, shuffleSeed, checking, result, er
             onChange={(pairs) => setAnswer({ type: "match", pairs })} shuffleSeed={shuffleSeed}
             disabled={locked} correctPairs={result?.feedback.correctPairs} />
         )}
+        {variant.type === "code" && (
+          <CodeChallenge code={code} onChange={(value) => { setCode(value); setRunError(null); }}
+            language={variant.language} output={execution?.output ?? null} running={running}
+            status={result ? result.correct ? "correct" : "wrong" : "none"}
+            expectedOutput="" fails={0} disabled={locked} showHints={false}
+            emptyOutputLabel="Программа завершилась без вывода." />
+        )}
+        {runError && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-neutral-700">{runError}</p>}
         {error && <p role="alert" className="rounded-xl bg-amber-50 p-4 text-neutral-700">{error}</p>}
-        {!result && <Button type="submit" variant="secondary" size="lg" className="w-full sm:w-auto" disabled={locked || !ready}>{checking ? "Проверяем..." : "Проверить"}</Button>}
+        {!result && <Button type="submit" variant="secondary" size="lg" className="w-full sm:w-auto" disabled={locked || !ready}>
+          {running ? "Выполняем..." : checking ? "Проверяем..." : variant.type === "code" ? "Запустить и проверить" : "Проверить"}
+        </Button>}
       </form>
       {result && <FeedbackPanel correct={result.correct} feedback={result.feedback} onContinue={onContinue} />}
     </div>

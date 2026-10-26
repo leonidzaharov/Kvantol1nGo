@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { createPracticeId, createPracticeItem, createPracticeVariant } from "@/lib/practice-editor";
 import type { StoredPracticeContent, StoredPracticeItem, StoredPracticeVariant } from "@/lib/practice-content";
 
+import { PracticeCodeEditor } from "./PracticeCodeEditor";
+
 const inputClass = "w-full min-w-0 rounded-xl border-2 border-neutral-200 p-3 font-medium text-neutral-700 focus:border-sky-300 focus:outline-none";
-const typeLabels = { choice: "Выбор ответа", text: "Короткий ответ", match: "Соедини пары" };
+const typeLabels = { choice: "Выбор ответа", text: "Короткий ответ", match: "Соедини пары", code: "Код Python/JavaScript" };
 
 type Props = {
   content: StoredPracticeContent;
@@ -72,8 +74,8 @@ export function PracticeEditor({ content, onChange }: Props) {
               </div>
             ))}
             <div className="flex flex-wrap gap-2">
-              {(["choice", "text", "match"] as const).map((type) => (
-                <Button key={type} type="button" variant={bonus ? "ghost" : "secondaryOutline"} disabled={section.length >= limit} onClick={() => updateSection(bonus, [...section, createPracticeItem(type)])}><Plus className="mr-1 h-4 w-4" />{bonus ? "⭐ " : ""}{typeLabels[type]}</Button>
+              {(["choice", "text", "match", "code"] as const).map((type) => (
+                <Button key={type} type="button" variant={bonus ? "ghost" : "secondaryOutline"} disabled={section.length >= limit} onClick={() => updateSection(bonus, [...section, createPracticeItem(type)])}><Plus className="mr-1 h-4 w-4" />{bonus ? "⭐ " : ""}{type === "code" ? "Добавить навык с кодом" : typeLabels[type]}</Button>
               ))}
             </div>
           </section>
@@ -98,7 +100,7 @@ function VariantEditor({ variant, index, canRemove, onChange, onRemove }: {
           const next = createPracticeVariant(event.target.value as StoredPracticeVariant["type"]);
           onChange({ ...next, id: variant.id, prompt: variant.prompt, explanation: variant.explanation });
         }}>
-          {(["choice", "text", "match"] as const).map((type) => <option key={type} value={type}>{typeLabels[type]}</option>)}
+          {(["choice", "text", "match", "code"] as const).map((type) => <option key={type} value={type}>{typeLabels[type]}</option>)}
         </select>
         <Button type="button" variant="ghost" size="sm" className="ml-auto" disabled={!canRemove} aria-label={`Удалить пример ${index + 1}`} onClick={onRemove}><Trash2 className="h-4 w-4" /></Button>
       </div>
@@ -123,6 +125,7 @@ function VariantEditor({ variant, index, canRemove, onChange, onRemove }: {
           <input required maxLength={1000} value={variant.correctAnswer} className={inputClass} onChange={(event) => onChange({ ...variant, correctAnswer: event.target.value })} />
         </label>
       )}
+      {variant.type === "code" && <PracticeCodeEditor variant={variant} onChange={onChange} inputClass={inputClass} />}
       {variant.type === "match" && (
         <div className="flex flex-col gap-2">
           <p className="text-sm text-neutral-500">Каждая строка - правильная пара. У ученика карточки справа перемешаются.</p>

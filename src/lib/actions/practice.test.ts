@@ -37,6 +37,14 @@ const attempt = {
   lessonId: 7, revision: lessonRevision(content), section: "core", itemId: "one", variantId: "first",
   answer: { type: "choice", optionIndex: 0 },
 };
+const codeContent = JSON.stringify(PracticeContentSchema.parse({
+  format: "practice-v1", theory: "", questions: [{ id: "one", variants: ["first", "second"].map((id) => ({
+    id, type: "code", prompt: "Напечатай каждое имя", language: "python", starterCode: 'print(students)',
+    expectedOutput: "Мира\nТео", referenceSolution: 'for student in ["Мира", "Тео"]:\n    print(student)',
+    explanation: "student хранит одно имя, students хранит список.",
+  })) }, item("two")], bonusQuestions: [],
+}));
+const codeAttempt = { ...attempt, revision: lessonRevision(codeContent), answer: { type: "code", executionOk: true, output: "Мира\nТео" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -48,6 +56,45 @@ beforeEach(() => {
 });
 
 describe("practice actions", () => {
+  it("persists a successful browser execution only after comparing its output with the stored expectation", async () => {
+    mocks.tx.lesson.findUnique.mockResolvedValue({ content: codeContent });
+    expect(await checkPracticeAnswer(codeAttempt)).toMatchObject({
+      kind: "checked", correct: true,
+      feedback: { codeLanguage: "python", expectedOutput: "Мира\nТео", explanation: "student хранит одно имя, students хранит список." },
+    });
+    expect(mocks.tx.userLessonProgress.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ answeredCore: [0], answeredCount: 1 }),
+    }));
+    expect(mocks.telemetry).toHaveBeenCalledWith(expect.objectContaining({ correct: true, questionIndex: 0 }));
+    expect(JSON.stringify(mocks.telemetry.mock.calls)).not.toContain("Мира");
+  });
+
+  it("reveals the code explanation on a runtime failure without solving the item", async () => {
+    mocks.tx.lesson.findUnique.mockResolvedValue({ content: codeContent });
+    expect(await checkPracticeAnswer({ ...codeAttempt, answer: { type: "code", executionOk: false, output: "TypeError: list instead of string" } })).toMatchObject({
+      kind: "checked", correct: false,
+      feedback: { answer: 'for student in ["Мира", "Тео"]:\n    print(student)', codeLanguage: "python" },
+    });
+    expect(mocks.tx.userLessonProgress.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({ answeredCore: [], answeredCount: 0, wrongAttempts: 1 }),
+    }));
+  });
+
+  it("does not accept a client passed flag instead of a code execution result", async () => {
+    mocks.tx.lesson.findUnique.mockResolvedValue({ content: codeContent });
+    expect(await checkPracticeAnswer({ ...codeAttempt, answer: { type: "code", passed: true } })).toEqual({ kind: "invalid" });
+    expect(mocks.tx.userLessonProgress.upsert).not.toHaveBeenCalled();
+  });
+
+  it("previews code feedback through the mentor guard without progress writes", async () => {
+    mocks.tx.lesson.findUnique.mockResolvedValue({ content: codeContent });
+    expect(await previewPracticeAnswer(codeAttempt)).toMatchObject({ kind: "checked", correct: true, feedback: { codeLanguage: "python" } });
+    expect(mocks.requireAdmin).toHaveBeenCalledOnce();
+    expect(mocks.transaction).not.toHaveBeenCalled();
+    expect(mocks.tx.userLessonProgress.upsert).not.toHaveBeenCalled();
+    expect(mocks.telemetry).not.toHaveBeenCalled();
+  });
+
   it("grades on the server and persists the canonical index for a non-UUID user", async () => {
     const result = await checkPracticeAnswer({ ...attempt, itemId: "two" });
     expect(result).toMatchObject({ kind: "checked", correct: true, feedback: { answer: "4" } });

@@ -35,6 +35,19 @@ describe("practice editor drafts", () => {
     expect(variant).not.toHaveProperty("correctAnswer");
     expect(variant).not.toHaveProperty("correctPairs");
   });
+
+  it("creates two independent Python teaching variants with explicitly empty author fields", () => {
+    let id = 0;
+    const item = createPracticeItem("code", () => `code-${++id}`);
+    expect(item.id).toBe("code-1");
+    expect(item.variants).toEqual(["code-2", "code-3"].map((variantId) => ({
+      id: variantId, type: "code", prompt: "", explanation: "", language: "python",
+      starterCode: "", expectedOutput: "", referenceSolution: "",
+    })));
+    expect(item.variants[0]).not.toBe(item.variants[1]);
+    expect(item.variants[0]).not.toHaveProperty("correctPairs");
+    expect(item.variants[0]).not.toHaveProperty("correctAnswer");
+  });
 });
 
 describe("safe lesson question imports", () => {

@@ -20,6 +20,9 @@ type CodeChallengeProps = {
   expectedOutput: string;
   /** Сколько раз проверка этого задания уже провалилась. */
   fails: number;
+  disabled?: boolean;
+  showHints?: boolean;
+  emptyOutputLabel?: string;
 };
 
 // Редактор кода для задания типа code: textarea с моноширинным шрифтом
@@ -34,12 +37,15 @@ export const CodeChallenge = ({
   status,
   expectedOutput,
   fails,
+  disabled = false,
+  showHints = true,
+  emptyOutputLabel,
 }: CodeChallengeProps) => {
   // Первая неудача — подсказка без ответа (номер строки с расхождением),
   // со второй — показываем ожидаемый вывод целиком, чтобы ученик не застрял.
   const hint =
-    status === "wrong" && output !== null ? diffHint(output, expectedOutput) : null;
-  const showExpected = status === "wrong" && fails >= 2;
+    showHints && status === "wrong" && output !== null ? diffHint(output, expectedOutput) : null;
+  const showExpected = showHints && status === "wrong" && fails >= 2;
 
   // Вставка в редактор отключена: код-задание — это тренировка рук, а не
   // Ctrl+V из чата с одноклассником. Показываем объяснение при попытке.
@@ -73,10 +79,11 @@ export const CodeChallenge = ({
           }
         }}
         rows={10}
+        maxLength={10000}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        disabled={running || status === "correct"}
+        disabled={disabled || running || status === "correct"}
         aria-label={`Код на ${LANGUAGE_LABELS[language]}`}
         className={cn(
           "w-full rounded-xl border-2 border-neutral-200 bg-neutral-50 p-4 font-mono text-sm text-neutral-700 outline-none focus:border-sky-300 disabled:opacity-70",
@@ -100,13 +107,12 @@ export const CodeChallenge = ({
           {running ? (
             <span className="text-neutral-400">
               {language === "python"
-                ? "Выполняем… (первый запуск скачивает Python, ~10 МБ — потом будет мгновенно)"
+                ? "Выполняем... При первом запуске загружается Python."
                 : "Выполняем…"}
             </span>
           ) : output === "" ? (
             <span className="text-neutral-400">
-              (программа ничего не напечатала — нужен{" "}
-              {language === "python" ? "print" : "console.log"})
+              {emptyOutputLabel ?? `(программа ничего не напечатала - нужен ${language === "python" ? "print" : "console.log"})`}
             </span>
           ) : (
             <pre className="overflow-x-auto whitespace-pre-wrap">{output}</pre>

@@ -5,12 +5,15 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/db";
 import { canAccessResource } from "@/lib/resource-access";
+import { resourcePracticeLessonId } from "@/lib/resource-practice";
 import { IdSchema, parse, requireUser } from "@/lib/server-guard";
 
 export type StudyResourceResult = {
   /** Сколько монет начислено этим нажатием (0 — уже изучал раньше). */
   gainedCoins: number;
 };
+
+const resourceTable = Prisma.raw(`"${(process.env.DATABASE_SCHEMA ?? "public").replaceAll('"', '""')}"."Resource"`);
 
 /**
  * Отметка «Изучил» на материале «Интересного»: одноразово начисляет
@@ -27,22 +30,23 @@ export async function studyResource(
     throw new Error("FORBIDDEN");
   }
 
-  const resource = await prisma.resource.findUnique({
-    where: { id: resourceId },
-    select: { coinReward: true },
-  });
-  if (!resource) {
-    throw new Error("BAD_REQUEST");
-  }
-
+  let gainedCoins = 0;
   try {
-    await prisma.$transaction([
-      prisma.userResource.create({ data: { userId, resourceId } }),
-      prisma.user.update({
+    gainedCoins = await prisma.$transaction(async (tx) => {
+      // Serializes classification with resource edits, including conversion to practice.
+      await tx.$executeRaw`SELECT id FROM ${resourceTable} WHERE id = ${resourceId} FOR SHARE`;
+      const resource = await tx.resource.findUnique({
+        where: { id: resourceId }, select: { type: true, url: true, coinReward: true },
+      });
+      if (!resource) throw new Error("BAD_REQUEST");
+      if (resourcePracticeLessonId(resource) !== null) throw new Error("PRACTICE_REQUIRES_COMPLETION");
+      await tx.userResource.create({ data: { userId, resourceId } });
+      await tx.user.update({
         where: { id: userId },
         data: { currency: { increment: resource.coinReward } },
-      }),
-    ]);
+      });
+      return resource.coinReward;
+    });
   } catch (e) {
     // P2002 = нарушение уникальности: отметка уже есть, монеты не начислять.
     if (
@@ -58,5 +62,5 @@ export async function studyResource(
   revalidatePath("/learn"); // счётчик монет в шапке
   revalidatePath("/profile"); // стат «Монеты»
 
-  return { gainedCoins: resource.coinReward };
+  return { gainedCoins };
 }
