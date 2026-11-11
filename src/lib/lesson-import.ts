@@ -14,7 +14,20 @@ import { parseLessonMarkdown, type LessonQuestionsImport } from "@/lib/lesson-do
 // Ссылка на картинку в markdown: ![alt](url) - извлекаем alt и url.
 // url бывает в угловых скобках, тогда внутри допускаются пробелы.
 const IMAGE_LINK_RE =
-  /!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^)\s"']+))\s*(?:"[^"]*")?\s*\)/g;
+  /!\[([^\]]*)\]\(\s*(?:<([^>]*)>|([^)\s"']+))\s*(?:"([^"]*)")?\s*\)/g;
+
+/** One row per source, even when the same image appears several times. */
+export function listTheoryImages(markdown: string): { source: string; alt: string; count: number }[] {
+  const images = new Map<string, { source: string; alt: string; count: number }>();
+  for (const match of markdown.matchAll(IMAGE_LINK_RE)) {
+    const source = decodeUrl(match[2] ?? match[3] ?? "");
+    if (!source) continue;
+    const existing = images.get(source);
+    if (existing) existing.count++;
+    else images.set(source, { source, alt: match[1], count: 1 });
+  }
+  return [...images.values()];
+}
 
 /** Пути, которые уже загружены или внешние - трогать не нужно. */
 export function isExternalImageUrl(url: string): boolean {
@@ -53,10 +66,10 @@ export function rewriteImageLinks(
 ): string {
   return markdown.replace(
     IMAGE_LINK_RE,
-    (all, alt: string, bracketed: string | undefined, bare: string | undefined) => {
+    (all, alt: string, bracketed: string | undefined, bare: string | undefined, title: string | undefined) => {
       const url = decodeUrl(bracketed ?? bare ?? "");
       const uploaded = urlMap.get(url);
-      return uploaded ? `![${alt}](${uploaded})` : all;
+      return uploaded ? `![${alt}](${uploaded}${title === undefined ? "" : ` "${title}"`})` : all;
     },
   );
 }
@@ -182,6 +195,37 @@ export async function svgToPngFile(file: File): Promise<File> {
 
 export type TheoryImportProgress = { done: number; total: number; note: string };
 
+/** Repair current Markdown without importing a guide or replacing any questions. */
+export async function uploadRelativeTheoryImages(
+  markdown: string, files: File[], upload: (file: File) => Promise<string>,
+  onProgress: (progress: TheoryImportProgress) => void = () => {}, mdDir = "",
+): Promise<{ replacements: Map<string, string>; missing: string[]; done: number; total: number }> {
+  const links = extractRelativeImagePaths(markdown);
+  const index = buildFileIndex(files);
+  const missing: string[] = [];
+  const replacements = new Map<string, string>();
+  const byFile = new Map<File, string>();
+  let done = 0;
+  onProgress({ done, total: links.length, note: "Загрузка картинок" });
+  for (const link of links) {
+    const file = resolveImageFile(link, mdDir, index);
+    if (!file) { missing.push(link); continue; }
+    try {
+      let url = byFile.get(file);
+      if (!url) {
+        url = await upload(SVG_EXT_RE.test(file.name) ? await svgToPngFile(file) : file);
+        byFile.set(file, url);
+      }
+      replacements.set(link, url);
+      done++;
+      onProgress({ done, total: links.length, note: "Загрузка картинок" });
+    } catch (error) {
+      missing.push(`${link} (${error instanceof Error ? error.message : "ошибка загрузки"})`);
+    }
+  }
+  return { replacements, missing, done, total: links.length };
+}
+
 /** Читает комплект и загружает только картинки, на которые ссылается теория. */
 export async function importTheoryFolder(
   files: File[],
@@ -193,36 +237,10 @@ export async function importTheoryFolder(
   // Parse before uploading: broken commands must not partially change editor data or upload assets.
   const parsed = parseLessonMarkdown(await md.text());
   const text = normalizeTheoryHtml(parsed.theory);
-  const links = extractRelativeImagePaths(text);
-  const index = buildFileIndex(files);
-  const mdDir = directoryOf(md);
-  const missing: string[] = [];
-  const urlMap = new Map<string, string>();
-  const byFile = new Map<File, string>();
-  let done = 0;
-  onProgress({ done, total: links.length, note: `Гайд: ${md.name}` });
-  for (const link of links) {
-    const file = resolveImageFile(link, mdDir, index);
-    if (!file) {
-      missing.push(link);
-      continue;
-    }
-    try {
-      let url = byFile.get(file);
-      if (!url) {
-        const uploadable = SVG_EXT_RE.test(file.name) ? await svgToPngFile(file) : file;
-        url = await upload(uploadable);
-        byFile.set(file, url);
-      }
-      urlMap.set(link, url);
-      done += 1;
-      onProgress({ done, total: links.length, note: `Гайд: ${md.name}` });
-    } catch (error) {
-      missing.push(`${link} (${error instanceof Error ? error.message : "ошибка загрузки"})`);
-    }
-  }
+  const { replacements, missing, done, total } = await uploadRelativeTheoryImages(text, files, upload,
+    (progress) => onProgress({ ...progress, note: `Гайд: ${md.name}` }), directoryOf(md));
   return {
-    markdown: rewriteImageLinks(text, urlMap), missing, done, total: links.length,
+    markdown: rewriteImageLinks(text, replacements), missing, done, total,
     ...(parsed.questionImport === null ? {} : { questionImport: parsed.questionImport }),
   };
 }

@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 
 import { LANGUAGE_LABELS } from "@/lib/code-runner";
 import type { CodeLanguage } from "@/lib/lesson-content";
 import { diffHint } from "@/lib/output-match";
 import { cn } from "@/lib/utils";
+
+const subscribeToClient = () => () => {};
+const clientReady = () => true;
+const serverReady = () => false;
 
 type CodeChallengeProps = {
   code: string;
@@ -41,6 +45,8 @@ export const CodeChallenge = ({
   showHints = true,
   emptyOutputLabel,
 }: CodeChallengeProps) => {
+  // Input must wait for React; early typing during hydration can lose its selection.
+  const ready = useSyncExternalStore(subscribeToClient, clientReady, serverReady);
   // Первая неудача — подсказка без ответа (номер строки с расхождением),
   // со второй — показываем ожидаемый вывод целиком, чтобы ученик не застрял.
   const hint =
@@ -83,7 +89,7 @@ export const CodeChallenge = ({
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        disabled={disabled || running || status === "correct"}
+        disabled={!ready || disabled || running || status === "correct"}
         aria-label={`Код на ${LANGUAGE_LABELS[language]}`}
         className={cn(
           "w-full rounded-xl border-2 border-neutral-200 bg-neutral-50 p-4 font-mono text-sm text-neutral-700 outline-none focus:border-sky-300 disabled:opacity-70",

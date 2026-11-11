@@ -2,7 +2,7 @@
 
 import "@mdxeditor/editor/style.css";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   $isDirectiveNode,
   AdmonitionDirectiveDescriptor,
@@ -32,16 +32,26 @@ import {
   markdownShortcutPlugin,
   MDXEditor,
   quotePlugin,
+  realmPlugin,
   tablePlugin,
   thematicBreakPlugin,
   toolbarPlugin,
   UndoRedo,
+  viewMode$,
+  type ViewMode,
   type EditorInFocus,
   type MDXEditorMethods,
 } from "@mdxeditor/editor";
 
 import { normalizeTheoryHtml } from "@/lib/lesson-content";
 import { uploadImageFile } from "@/lib/image-upload";
+import { rewriteImageLinks } from "@/lib/lesson-import";
+import { createEditorViewMemory } from "./editor-view-memory";
+import { TheoryImages } from "./theory-images";
+
+const viewMemoryPlugin = realmPlugin<{ onModeChange: (mode: ViewMode) => void }>({
+  postInit(realm, params) { if (params) realm.sub(viewMode$, params.onModeChange); },
+});
 
 // ============================================================
 // Визуальный (WYSIWYG) редактор теории урока поверх MDXEditor.
@@ -88,16 +98,28 @@ type TheoryEditorProps = {
   /** Стартовый markdown (читается один раз при монтировании). */
   markdown: string;
   onChange: (markdown: string) => void;
+  onUploadStateChange?: (busy: boolean) => void;
 };
 
-export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
+export function TheoryEditor({ markdown, onChange, onUploadStateChange }: TheoryEditorProps) {
   // Ошибка парсинга не роняет форму: показываем подсказку, правится в
   // режиме источника (кнопка </> в тулбаре).
   const [parseError, setParseError] = useState<string | null>(null);
   const editorRef = useRef<MDXEditorMethods>(null);
+  const [viewMemory] = useState(createEditorViewMemory);
+  useEffect(() => () => viewMemory.dispose(), [viewMemory]);
+
+  function replaceImages(replacements: Map<string, string>) {
+    if (!replacements.size) return;
+    const current = editorRef.current?.getMarkdown() ?? markdown;
+    const updated = rewriteImageLinks(current, replacements);
+    viewMemory.preserve(() => editorRef.current?.setMarkdown(updated));
+    onChange(updated);
+  }
 
   return (
     <div className="rounded-xl border-2 border-neutral-200 focus-within:border-sky-300">
+      <div ref={(element) => viewMemory.attach(element)} className="theory-editor-viewport max-h-[70dvh] min-h-[260px] overflow-auto rounded-t-xl [overflow-anchor:none] [&_[role=toolbar]]:z-10">
       <MDXEditor
         ref={editorRef}
         markdown={markdown}
@@ -156,6 +178,7 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
             },
           }),
           diffSourcePlugin({ viewMode: "rich-text" }),
+          viewMemoryPlugin({ onModeChange: (mode) => viewMemory.changeMode(mode) }),
           markdownShortcutPlugin(),
           toolbarPlugin({
             toolbarContents: () => (
@@ -200,6 +223,8 @@ export function TheoryEditor({ markdown, onChange }: TheoryEditorProps) {
           }),
         ]}
       />
+      </div>
+      <TheoryImages markdown={markdown} getMarkdown={() => editorRef.current?.getMarkdown() ?? markdown} onReplace={replaceImages} onBusyChange={onUploadStateChange} />
       {parseError && (
         <p className="border-t-2 border-neutral-200 bg-rose-50 p-3 text-sm font-medium text-rose-600">
           Не смог разобрать разметку: {parseError}. Переключись в режим

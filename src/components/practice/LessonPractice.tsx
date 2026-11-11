@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 
 import { ResultCard } from "@/app/lesson/[id]/result-card";
 import { AchievementToastStack } from "@/components/AchievementToast";
-import { Markdown } from "@/components/Markdown";
 import { Button } from "@/components/ui/button";
 import { completeLesson, saveTheoryStep, type CompleteLessonResult } from "@/lib/actions/gamification";
 import { checkPracticeAnswer, previewPracticeAnswer } from "@/lib/actions/practice";
@@ -14,6 +13,8 @@ import type { PracticeAttempt } from "@/lib/practice-types";
 import { splitTheoryIntoSections } from "@/lib/theory-sections";
 
 import { PracticeRunner } from "./PracticeRunner";
+import { TheoryPages } from "./TheoryPages";
+import { useTheoryNavigation } from "./useTheoryNavigation";
 
 type Props = {
   lessonId: number;
@@ -39,6 +40,8 @@ function LessonPracticeSession({ lessonId, title, revision, sessionKey, content,
   const [toasts, setToasts] = useState<CompleteLessonResult["unlockedAchievements"]>([]);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const theoryNavigation = useTheoryNavigation();
+  const savedTheoryStep = useRef(initialTheoryStep);
   const busy = useRef(false);
   const section = sections[theoryIndex];
 
@@ -49,7 +52,8 @@ function LessonPracticeSession({ lessonId, title, revision, sessionKey, content,
     setError(null);
     const next = theoryIndex + 1;
     try {
-      if (!previewMode) await saveTheoryStep(lessonId, next);
+      if (!previewMode && next > savedTheoryStep.current) await saveTheoryStep(lessonId, next);
+      savedTheoryStep.current = Math.max(savedTheoryStep.current, next);
       setTheoryIndex(next);
       if (next >= sections.length) setPhase("core");
     } catch {
@@ -93,18 +97,16 @@ function LessonPracticeSession({ lessonId, title, revision, sessionKey, content,
   return (
     <div className="min-h-screen bg-white pb-8">
       <AchievementToastStack achievements={toasts} onDismiss={(id) => setToasts((old) => old.filter((toast) => toast.id !== id))} />
+      {theoryNavigation.page !== null && <TheoryPages title={title} sections={sections} index={theoryNavigation.page}
+        onPageChange={theoryNavigation.setPage} onReturnToPractice={theoryNavigation.close}
+        onContinue={() => theoryNavigation.page! + 1 < sections.length ? theoryNavigation.setPage(theoryNavigation.page! + 1) : theoryNavigation.close()} />}
+      <div hidden={theoryNavigation.page !== null}>
       {phase === "theory" && section ? (
-        <section className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6">
-          <h1 className="text-2xl font-bold text-neutral-700">{title}</h1>
-          <p className="text-sm text-neutral-600">Объяснение {theoryIndex + 1} из {sections.length}</p>
-          <div key={theoryIndex}><Markdown>{section.markdown}</Markdown></div>
-          {errorMessage}
-          <Button type="button" variant="secondary" disabled={pending} onClick={continueTheory}>
-            {pending ? "Сохраняем..." : theoryIndex + 1 >= sections.length ? "К практике" : "Далее"}
-          </Button>
-        </section>
+        <TheoryPages title={title} sections={sections} index={theoryIndex} onPageChange={setTheoryIndex}
+          onContinue={continueTheory} pending={pending} error={errorMessage} />
       ) : phase === "core" ? (
         <PracticeRunner title={title} sessionKey={`${sessionKey}:${revision}:core`} items={content.questions}
+          onReviewTheory={sections.length > 0 ? theoryNavigation.open : undefined}
           initialSolvedIds={initialSolvedIds} checkAnswer={(attempt, signal) => check(attempt, signal, "core")}
           completion={<>
             {errorMessage}
@@ -118,6 +120,7 @@ function LessonPracticeSession({ lessonId, title, revision, sessionKey, content,
             <Button type="button" variant="ghost" onClick={() => setPhase("result")}>К итогам урока</Button>
           </div>
           <PracticeRunner title="Дополнительная практика" sessionKey={`${sessionKey}:${revision}:bonus`}
+            onReviewTheory={sections.length > 0 ? theoryNavigation.open : undefined}
             items={content.bonusQuestions} checkAnswer={(attempt, signal) => check(attempt, signal, "bonus")}
             completion={<Button type="button" className="mt-5" variant="secondary" onClick={() => setPhase("result")}>К итогам урока</Button>} />
         </>
@@ -136,6 +139,7 @@ function LessonPracticeSession({ lessonId, title, revision, sessionKey, content,
           <Button variant="secondary" asChild><Link href={previewMode ? `/admin/lessons/${lessonId}` : "/learn"}>{previewMode ? "К редактору" : "К урокам"}</Link></Button>
         </section>
       )}
+      </div>
     </div>
   );
 }

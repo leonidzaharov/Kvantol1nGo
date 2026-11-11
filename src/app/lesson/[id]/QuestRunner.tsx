@@ -38,6 +38,7 @@ import { questionKind, type SafeLessonContent } from "@/lib/lesson-content";
 import { outputsMatch } from "@/lib/output-match";
 import { prewarmCode, runCode } from "@/lib/code-runner";
 import { splitTheoryIntoSections } from "@/lib/theory-sections";
+import { useTheoryNavigation } from "@/components/practice/useTheoryNavigation";
 
 import { Challenge } from "./challenge";
 import { CodeChallenge } from "./code-challenge";
@@ -137,6 +138,7 @@ export function QuestRunner({
   );
   const [result, setResult] = useState<CompleteLessonResult | null>(null);
   const [bonusFinished, setBonusFinished] = useState(false);
+  const theoryNavigation = useTheoryNavigation();
   const [toasts, setToasts] = useState<UnlockedAchievement[]>([]);
   const [isPending, startTransition] = useTransition();
 
@@ -150,7 +152,8 @@ export function QuestRunner({
 
   useEffect(() => {
     theoryScrollRef.current?.scrollTo({ top: 0 });
-  }, [theoryIndex]);
+    if (phase === "theory" || theoryNavigation.page !== null) theoryScrollRef.current?.focus({ preventScroll: true });
+  }, [theoryIndex, phase, theoryNavigation.page]);
 
   // Код ученика по номерам заданий (сохраняется при «Повторить» и при
   // возврате к заданию), вывод последнего запуска и флаг «выполняется».
@@ -164,7 +167,8 @@ export function QuestRunner({
   >({});
 
   const challenge = questions[activeIndex];
-  const theorySection = theorySections[theoryIndex] ?? theorySections[0];
+  const visibleTheoryIndex = theoryNavigation.page ?? theoryIndex;
+  const theorySection = theorySections[visibleTheoryIndex] ?? theorySections[0];
   const kind = challenge ? questionKind(challenge) : "choice";
   // Черновик кода подхватывается лениво: сначала правки этой сессии,
   // потом сохранённый в браузере черновик, потом стартовый код задания.
@@ -484,12 +488,21 @@ export function QuestRunner({
 
   const goToTheoryStep = (nextIndex: number) => {
     const safeIndex = Math.max(0, Math.min(theoryTotal - 1, nextIndex));
-    setTheoryIndex(safeIndex);
-    setResumeHintVisible(false);
-    persistTheoryStep(safeIndex);
+    if (theoryNavigation.page !== null) {
+      theoryNavigation.setPage(safeIndex);
+    } else {
+      setTheoryIndex(safeIndex);
+      setResumeHintVisible(false);
+      persistTheoryStep(safeIndex);
+    }
   };
 
   const continueTheory = () => {
+    if (theoryNavigation.page !== null) {
+      if (theoryNavigation.page < theoryTotal - 1) theoryNavigation.setPage(theoryNavigation.page + 1);
+      else theoryNavigation.close();
+      return;
+    }
     setResumeHintVisible(false);
     if (theoryIndex < theoryTotal - 1) {
       goToTheoryStep(theoryIndex + 1);
@@ -621,18 +634,17 @@ export function QuestRunner({
   }
 
   // ── Теория перед заданиями ──
-  if (phase === "theory") {
-    return (
+  const theoryScreen = phase === "theory" || theoryNavigation.page !== null ? (
       <>
         {resumeHint}
         <Header
           hearts={hearts}
           percentage={percentage}
-          stepLabel={`Теория · шаг ${theoryIndex + 1} из ${theoryTotal}`}
+          stepLabel={`Теория · шаг ${visibleTheoryIndex + 1} из ${theoryTotal}`}
           exitHref={previewMode ? `/admin/lessons/${lessonId}` : "/learn"}
         />
 
-        <div ref={theoryScrollRef} className="min-h-0 flex-1 overflow-y-auto">
+        <div ref={theoryScrollRef} tabIndex={-1} role="region" aria-label="Материал урока" className="min-h-0 flex-1 overflow-y-auto">
           <article className="mx-auto w-full max-w-[860px] px-5 py-7 sm:px-8 lg:px-10 lg:py-10">
             <p className="mb-2 text-center text-xs font-bold uppercase tracking-wide text-neutral-400 lg:text-start">
               {previewMode
@@ -642,6 +654,7 @@ export function QuestRunner({
                   : ""}
               {title}
             </p>
+            {theoryNavigation.page !== null && <Button type="button" variant="secondaryOutline" size="sm" className="mb-5" onClick={theoryNavigation.close}>Вернуться к практике</Button>}
             <Markdown>{theorySection?.markdown ?? content.theory}</Markdown>
           </article>
         </div>
@@ -649,11 +662,13 @@ export function QuestRunner({
         <Footer
           status="completed"
           disabled={isPending}
-          onBack={() => goToTheoryStep(theoryIndex - 1)}
-          backDisabled={theoryIndex === 0}
+          onBack={() => goToTheoryStep(visibleTheoryIndex - 1)}
+          backDisabled={visibleTheoryIndex === 0}
           primaryLabel={
-            theoryIndex < theoryTotal - 1
+            visibleTheoryIndex < theoryTotal - 1
               ? "Продолжить"
+              : theoryNavigation.page !== null
+                ? "Вернуться к практике"
               : coreTotal > 0
                 ? "К заданиям"
                 : "Завершить урок"
@@ -663,8 +678,8 @@ export function QuestRunner({
 
         <AchievementToastStack achievements={toasts} onDismiss={dismissToast} />
       </>
-    );
-  }
+    ) : null;
+  if (phase === "theory") return theoryScreen;
 
   // ── Урок без заданий и без теории (защита от пустого контента) ──
   if (total === 0) {
@@ -697,6 +712,8 @@ export function QuestRunner({
   return (
     <>
       {resumeHint}
+      {theoryScreen}
+      <div className={theoryNavigation.page !== null ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
       <Header
         hearts={hearts}
         percentage={percentage}
@@ -712,6 +729,7 @@ export function QuestRunner({
         <div className="flex h-full items-center justify-center">
           <div className="flex w-full max-w-[760px] flex-col gap-y-10 px-5 py-8 sm:px-8 lg:min-h-[350px] lg:px-10">
             <div className="space-y-2">
+              {hasTheory && <Button type="button" variant="secondaryOutline" size="sm" disabled={isPending || running || checking} onClick={theoryNavigation.open}>К теории</Button>}
               {alreadyCompleted && (
                 <p className="text-center text-xs font-bold uppercase tracking-wide text-neutral-400 lg:text-start">
                   Тренировка · {title}
@@ -771,6 +789,7 @@ export function QuestRunner({
         status={status}
         onCheck={onContinue}
         disabled={
+          theoryNavigation.page !== null ||
           isPending ||
           running ||
           checking ||
@@ -786,6 +805,7 @@ export function QuestRunner({
       />
 
       <AchievementToastStack achievements={toasts} onDismiss={dismissToast} />
+      </div>
     </>
   );
 }

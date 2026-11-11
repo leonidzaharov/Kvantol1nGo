@@ -38,6 +38,7 @@ type Props = {
   initialSolvedIds?: readonly string[];
   /** The lesson wrapper confirms completion and offers bonuses here. */
   completion?: ReactNode;
+  onReviewTheory?: () => void;
 };
 
 export function PracticeRunner(props: Props) {
@@ -47,7 +48,7 @@ export function PracticeRunner(props: Props) {
   return <PracticeSession key={props.sessionKey} {...props} />;
 }
 
-function PracticeSession({ title, sessionKey, items, checkAnswer, initialSolvedIds, completion }: Props) {
+function PracticeSession({ title, sessionKey, items, checkAnswer, initialSolvedIds, completion, onReviewTheory }: Props) {
   const [flow, setFlow] = useState(() => createPracticeFlow(items, initialSolvedIds));
   const [error, setError] = useState<{ message: string; stale: boolean } | null>(null);
   const pending = useRef<AbortController | null>(null);
@@ -97,6 +98,7 @@ function PracticeSession({ title, sessionKey, items, checkAnswer, initialSolvedI
           <h2 tabIndex={-1} ref={(node) => node?.focus()} className="text-xl font-bold text-neutral-700 outline-none">Практика завершена!</h2>
           <p className="mt-3 text-neutral-600">Ты справился со всеми обязательными заданиями. Попробуй вспомнить главное правило без подсказки.</p>
           {completion}
+          {onReviewTheory && <Button type="button" variant="ghost" onClick={onReviewTheory}>К теории</Button>}
         </div>
       ) : item && variant && current ? (
         <PracticeStep key={`${item.id}:${variant.id}:${current.attempts}`}
@@ -104,6 +106,7 @@ function PracticeSession({ title, sessionKey, items, checkAnswer, initialSolvedI
           shuffleSeed={`${sessionKey}:${item.id}:${variant.id}`}
           checking={flow.phase === "checking"} result={flow.result} error={error?.message}
           stale={error?.stale ?? false} onCheck={check}
+          onReviewTheory={onReviewTheory}
           onContinue={() => { setFlow((previous) => advancePractice(previous, item.variants.length)); setError(null); }} />
       ) : <p role="alert">Не удалось открыть задание. Открой практику заново.</p>}
     </section>
@@ -121,9 +124,10 @@ type StepProps = {
   stale: boolean;
   onCheck: (answer: PracticeAnswer) => Promise<void>;
   onContinue: () => void;
+  onReviewTheory?: () => void;
 };
 
-function PracticeStep({ item, variant, repeat, shuffleSeed, checking, result, error, stale, onCheck, onContinue }: StepProps) {
+function PracticeStep({ item, variant, repeat, shuffleSeed, checking, result, error, stale, onCheck, onContinue, onReviewTheory }: StepProps) {
   const [answer, setAnswer] = useState<PracticeAnswer>(() => variant.type === "text"
     ? { type: "text", text: "" } : variant.type === "match"
       ? { type: "match", pairs: [] } : variant.type === "code"
@@ -168,6 +172,7 @@ function PracticeStep({ item, variant, repeat, shuffleSeed, checking, result, er
   }
   return (
     <div className="space-y-5">
+      {onReviewTheory && <Button type="button" variant="secondaryOutline" size="sm" disabled={running || checking} onClick={onReviewTheory}>К теории</Button>}
       {repeat && <p className="text-sm font-bold text-sky-700">Другой пример на тот же навык</p>}
       {item.intro && <p className="whitespace-pre-wrap rounded-xl bg-sky-50 p-4 text-neutral-700">{item.intro}</p>}
       <h2 ref={heading} tabIndex={-1} className="whitespace-pre-wrap text-xl font-bold break-words text-neutral-700 outline-none">{variant.prompt}</h2>

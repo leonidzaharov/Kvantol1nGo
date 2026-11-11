@@ -411,6 +411,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
   const [theoryKey, setTheoryKey] = useState(0);
   const [theoryImport, setTheoryImport] = useState<TheoryImportProgress | null>(null);
   const [theoryImporting, setTheoryImporting] = useState(false);
+  const [theoryImagesUploading, setTheoryImagesUploading] = useState(false);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   const importMarkdown = async (file: File) => {
@@ -493,7 +494,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
   return (
     <form
       action={formAction}
-      onSubmit={(event) => { if (theoryImporting || pendingImport) event.preventDefault(); }}
+      onSubmit={(event) => { if (theoryImporting || theoryImagesUploading || pendingImport) event.preventDefault(); }}
       className="flex w-full flex-col gap-y-4"
     >
       <input type="hidden" name="id" value={lesson?.id ?? ""} />
@@ -589,7 +590,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
       </div>
 
       {contentLocked && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Содержание этой практики закреплено за опубликованным уроком или сохранённым прогрессом. Для новых заданий создай отдельный урок.</p>}
-      <fieldset disabled={pending || theoryImporting || contentLocked} className="flex min-w-0 flex-col gap-4">
+      <fieldset disabled={pending || theoryImporting || theoryImagesUploading || contentLocked} className="flex min-w-0 flex-col gap-4">
       <label className="flex flex-col gap-1.5 font-bold text-neutral-700">Формат урока
         <select value={format} disabled={!!lesson || !allowFormatChange || !!pendingImport} className={inputClass} onChange={(event) => setFormat(event.target.value as "classic" | "practice-v1")}>
           <option value="classic">Обычный урок</option>
@@ -641,7 +642,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
             </span>
           )}
         </div>
-        {contentLocked ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-neutral-200 p-3 text-sm text-neutral-500">{theory || "Теория не добавлена"}</pre> : <TheoryEditor key={theoryKey} markdown={theory} onChange={(value) => { if (!theoryImporting) setTheory(value); }} />}
+        {contentLocked ? <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-neutral-200 p-3 text-sm text-neutral-500">{theory || "Теория не добавлена"}</pre> : <TheoryEditor key={theoryKey} markdown={theory} onChange={(value) => { if (!theoryImporting) setTheory(value); }} onUploadStateChange={setTheoryImagesUploading} />}
         <span className="text-sm text-neutral-400">
           Показывается ученику перед заданиями. Картинки можно перетащить в
           текст или вставить через Ctrl+V - они сами загрузятся в хранилище.
@@ -649,6 +650,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
           картинки. Блок kvantolingo внутри .md также импортирует задания после
           подтверждения. Обычный .md сохраняет текущие вопросы.
           Для картинок с относительными путями используй импорт папки.
+          Чтобы восстановить картинку без замены текста, открой список «Картинки урока» под редактором. В MD ссылка выглядит так: {"![Подпись](images/имя.png)"}. В списке можно выбрать её файл или загрузить недостающие из папки.
         </span>
       </div>
 
@@ -1042,7 +1044,7 @@ export const LessonForm = ({ categories, lesson, contentLocked = false }: Lesson
 
       {/* Липкая панель: форма длинная, «Сохранить» должна быть под рукой при любом скролле. */}
       <div className="sticky bottom-0 z-10 -mx-3 mb-6 mt-2 flex items-center gap-x-3 border-t-2 border-neutral-200 bg-white/95 px-3 py-3 backdrop-blur">
-        <Button type="submit" variant="secondary" disabled={pending || theoryImporting || !!pendingImport}>
+        <Button type="submit" variant="secondary" disabled={pending || theoryImporting || theoryImagesUploading || !!pendingImport}>
           {pending ? "Сохраняю…" : "Сохранить"}
         </Button>
         <Button variant="ghost" asChild>

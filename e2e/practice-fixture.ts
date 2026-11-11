@@ -53,7 +53,7 @@ const content = PracticeContentSchema.parse({
   })) }],
 });
 
-export async function createPracticeFixture(): Promise<PracticeFixture> {
+export async function createPracticeFixture(options: { theory?: string; matching?: boolean } = {}): Promise<PracticeFixture> {
   const connection = client();
   await connection.connect();
   try {
@@ -73,7 +73,15 @@ export async function createPracticeFixture(): Promise<PracticeFixture> {
     const lesson = await connection.query<{ id: number }>(
       `INSERT INTO "${E2E_SCHEMA}"."Lesson" (title, "categoryId", content, "xpReward", "coinReward", "sortOrder", "isPublished")
        VALUES ($1, $2, $3, 10, 20, 999, true) RETURNING id`,
-      [title, category.rows[0].id, JSON.stringify(content)],
+      [title, category.rows[0].id, JSON.stringify({ ...content, theory: options.theory ?? "", questions: [
+        ...content.questions,
+        ...(options.matching ? [{ id: "pairs", variants: [0, 1].map((n) => ({ id: `pairs-${n}`, type: "match",
+          prompt: "Соедини диапазоны и числа.",
+          left: [{ id: "l1", label: "range(2)" }, { id: "l2", label: "range(1, 3)" }],
+          right: [{ id: "r1", label: "0, 1" }, { id: "r2", label: "1, 2" }],
+          correctPairs: [{ leftId: "l1", rightId: "r1" }, { leftId: "l2", rightId: "r2" }],
+          explanation: "Правая граница не входит." })) }] : []),
+      ] })],
     );
     await connection.query("COMMIT");
     return { lessonId: lesson.rows[0].id, userId, studentName, title };
@@ -87,8 +95,8 @@ export async function readPracticeState(fixture: PracticeFixture) {
   const connection = client();
   await connection.connect();
   try {
-    const progress = await connection.query<{ answeredCore: number[]; isCompleted: boolean; wrongAttempts: number }>(
-      `SELECT "answeredCore", "isCompleted", "wrongAttempts" FROM "${E2E_SCHEMA}"."UserLessonProgress" WHERE "lessonId"=$1 AND "userId"=$2`,
+    const progress = await connection.query<{ answeredCore: number[]; isCompleted: boolean; wrongAttempts: number; theoryStep: number }>(
+      `SELECT "answeredCore", "isCompleted", "wrongAttempts", "theoryStep" FROM "${E2E_SCHEMA}"."UserLessonProgress" WHERE "lessonId"=$1 AND "userId"=$2`,
       [fixture.lessonId, fixture.userId],
     );
     const user = await connection.query<{ currency: number }>(`SELECT currency FROM "${E2E_SCHEMA}"."User" WHERE id=$1`, [fixture.userId]);

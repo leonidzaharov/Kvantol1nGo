@@ -40,7 +40,7 @@ export function PracticeEditor({ content, onChange }: Props) {
 
   return (
     <div className="flex flex-col gap-5">
-      <p className="text-sm text-neutral-500">В каждом пункте подготовь 2-3 разных примера одного навыка. После ошибки ученик увидит разбор, затем вернётся к другому примеру.</p>
+      <p className="text-sm text-neutral-500">Каждый пункт - один навык с 2-3 разными примерами. Сначала ученик решает первый. После ошибки он увидит ответ и объяснение, затем через два других пункта получит следующий пример этого навыка. Если других пунктов нет, повтор появится раньше. Два примера нужны, чтобы ученик применил правило, а не повторил уже показанный ответ.</p>
       {([false, true] as const).map((bonus) => {
         const section = bonus ? content.bonusQuestions : content.questions;
         const limit = bonus ? 20 : 50;
